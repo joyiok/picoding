@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "types": ["node"],
+    "sourceMap": true
+  },
+  "include": ["server", "shared", "sandbox", "scripts/doctor.ts"],
+  "exclude": ["web", "test", "scripts/dev.ts"]
+}

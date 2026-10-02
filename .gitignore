@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.picoding/
+.impeccable/review/
+.impeccable/mocks/
+.impeccable/config.local.json
+*.log
+*.tsbuildinfo

@@ -1,0 +1,551 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-02T14:36:54Z",
+  "title": "Design System: PiCoding",
+  "extensions": {
+    "colorMeta": {
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Porcelain",
+        "canonical": "#fff",
+        "tonalRamp": [
+          "oklch(15% 0.00000 89.88)",
+          "oklch(25% 0.00000 89.88)",
+          "oklch(35% 0.00000 89.88)",
+          "oklch(45% 0.00000 89.88)",
+          "oklch(60% 0.00000 89.88)",
+          "oklch(73% 0.00000 89.88)",
+          "oklch(85% 0.00000 89.88)",
+          "oklch(95% 0.00000 89.88)"
+        ]
+      },
+      "chrome": {
+        "role": "neutral",
+        "displayName": "Cool Chrome",
+        "canonical": "#f4f5f7",
+        "tonalRamp": [
+          "oklch(15% 0.00287 264.54)",
+          "oklch(25% 0.00287 264.54)",
+          "oklch(35% 0.00287 264.54)",
+          "oklch(45% 0.00287 264.54)",
+          "oklch(60% 0.00287 264.54)",
+          "oklch(73% 0.00287 264.54)",
+          "oklch(85% 0.00287 264.54)",
+          "oklch(95% 0.00287 264.54)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Divider Gray",
+        "canonical": "#e6e8ed",
+        "tonalRamp": [
+          "oklch(15% 0.00707 268.55)",
+          "oklch(25% 0.00707 268.55)",
+          "oklch(35% 0.00707 268.55)",
+          "oklch(45% 0.00707 268.55)",
+          "oklch(60% 0.00707 268.55)",
+          "oklch(73% 0.00707 268.55)",
+          "oklch(85% 0.00707 268.55)",
+          "oklch(95% 0.00707 268.55)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted Slate",
+        "canonical": "#626b78",
+        "tonalRamp": [
+          "oklch(15% 0.02327 257.51)",
+          "oklch(25% 0.02327 257.51)",
+          "oklch(35% 0.02327 257.51)",
+          "oklch(45% 0.02327 257.51)",
+          "oklch(60% 0.02327 257.51)",
+          "oklch(73% 0.02327 257.51)",
+          "oklch(85% 0.02327 257.51)",
+          "oklch(95% 0.02327 257.51)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Charcoal",
+        "canonical": "#262a31",
+        "tonalRamp": [
+          "oklch(15% 0.01408 261.69)",
+          "oklch(25% 0.01408 261.69)",
+          "oklch(35% 0.01408 261.69)",
+          "oklch(45% 0.01408 261.69)",
+          "oklch(60% 0.01408 261.69)",
+          "oklch(73% 0.01408 261.69)",
+          "oklch(85% 0.01408 261.69)",
+          "oklch(95% 0.01408 261.69)"
+        ]
+      },
+      "green": {
+        "role": "primary",
+        "displayName": "Readiness Green",
+        "canonical": "#28735b",
+        "tonalRamp": [
+          "oklch(15% 0.08346 168.40)",
+          "oklch(25% 0.08346 168.40)",
+          "oklch(35% 0.08346 168.40)",
+          "oklch(45% 0.08346 168.40)",
+          "oklch(60% 0.08346 168.40)",
+          "oklch(73% 0.08346 168.40)",
+          "oklch(85% 0.08346 168.40)",
+          "oklch(95% 0.08346 168.40)"
+        ]
+      },
+      "soft-green": {
+        "role": "primary",
+        "displayName": "Soft Readiness",
+        "canonical": "#eaf4ee",
+        "tonalRamp": [
+          "oklch(15% 0.01322 159.91)",
+          "oklch(25% 0.01322 159.91)",
+          "oklch(35% 0.01322 159.91)",
+          "oklch(45% 0.01322 159.91)",
+          "oklch(60% 0.01322 159.91)",
+          "oklch(73% 0.01322 159.91)",
+          "oklch(85% 0.01322 159.91)",
+          "oklch(95% 0.01322 159.91)"
+        ]
+      },
+      "focus-green": {
+        "role": "primary",
+        "displayName": "Focus Green",
+        "canonical": "#32715e",
+        "tonalRamp": [
+          "oklch(15% 0.07231 170.97)",
+          "oklch(25% 0.07231 170.97)",
+          "oklch(35% 0.07231 170.97)",
+          "oklch(45% 0.07231 170.97)",
+          "oklch(60% 0.07231 170.97)",
+          "oklch(73% 0.07231 170.97)",
+          "oklch(85% 0.07231 170.97)",
+          "oklch(95% 0.07231 170.97)"
+        ]
+      },
+      "terminal-focus": {
+        "role": "primary",
+        "displayName": "Terminal Focus",
+        "canonical": "#a2ceba",
+        "tonalRamp": [
+          "oklch(15% 0.05422 165.58)",
+          "oklch(25% 0.05422 165.58)",
+          "oklch(35% 0.05422 165.58)",
+          "oklch(45% 0.05422 165.58)",
+          "oklch(60% 0.05422 165.58)",
+          "oklch(73% 0.05422 165.58)",
+          "oklch(85% 0.05422 165.58)",
+          "oklch(95% 0.05422 165.58)"
+        ]
+      },
+      "page-bg": {
+        "role": "neutral",
+        "displayName": "Page Paper",
+        "canonical": "#f8f9fb",
+        "tonalRamp": [
+          "oklch(15% 0.00286 264.54)",
+          "oklch(25% 0.00286 264.54)",
+          "oklch(35% 0.00286 264.54)",
+          "oklch(45% 0.00286 264.54)",
+          "oklch(60% 0.00286 264.54)",
+          "oklch(73% 0.00286 264.54)",
+          "oklch(85% 0.00286 264.54)",
+          "oklch(95% 0.00286 264.54)"
+        ]
+      },
+      "panel-surface": {
+        "role": "neutral",
+        "displayName": "Quiet Panel Paper",
+        "canonical": "#fafbfc",
+        "tonalRamp": [
+          "oklch(15% 0.00170 247.84)",
+          "oklch(25% 0.00170 247.84)",
+          "oklch(35% 0.00170 247.84)",
+          "oklch(45% 0.00170 247.84)",
+          "oklch(60% 0.00170 247.84)",
+          "oklch(73% 0.00170 247.84)",
+          "oklch(85% 0.00170 247.84)",
+          "oklch(95% 0.00170 247.84)"
+        ]
+      },
+      "nav-hover": {
+        "role": "neutral",
+        "displayName": "Navigation Hover",
+        "canonical": "#e9ecf0",
+        "tonalRamp": [
+          "oklch(15% 0.00628 255.48)",
+          "oklch(25% 0.00628 255.48)",
+          "oklch(35% 0.00628 255.48)",
+          "oklch(45% 0.00628 255.48)",
+          "oklch(60% 0.00628 255.48)",
+          "oklch(73% 0.00628 255.48)",
+          "oklch(85% 0.00628 255.48)",
+          "oklch(95% 0.00628 255.48)"
+        ]
+      },
+      "task-selected-bg": {
+        "role": "neutral",
+        "displayName": "Selected Task Paper",
+        "canonical": "#e3e8e5",
+        "tonalRamp": [
+          "oklch(15% 0.00668 160.07)",
+          "oklch(25% 0.00668 160.07)",
+          "oklch(35% 0.00668 160.07)",
+          "oklch(45% 0.00668 160.07)",
+          "oklch(60% 0.00668 160.07)",
+          "oklch(73% 0.00668 160.07)",
+          "oklch(85% 0.00668 160.07)",
+          "oklch(95% 0.00668 160.07)"
+        ]
+      },
+      "task-selected-ink": {
+        "role": "neutral",
+        "displayName": "Selected Task Ink",
+        "canonical": "#234c3a",
+        "tonalRamp": [
+          "oklch(15% 0.05619 163.16)",
+          "oklch(25% 0.05619 163.16)",
+          "oklch(35% 0.05619 163.16)",
+          "oklch(45% 0.05619 163.16)",
+          "oklch(60% 0.05619 163.16)",
+          "oklch(73% 0.05619 163.16)",
+          "oklch(85% 0.05619 163.16)",
+          "oklch(95% 0.05619 163.16)"
+        ]
+      },
+      "warning": {
+        "role": "secondary",
+        "displayName": "Ownership Amber",
+        "canonical": "#806327",
+        "tonalRamp": [
+          "oklch(15% 0.08563 82.79)",
+          "oklch(25% 0.08563 82.79)",
+          "oklch(35% 0.08563 82.79)",
+          "oklch(45% 0.08563 82.79)",
+          "oklch(60% 0.08563 82.79)",
+          "oklch(73% 0.08563 82.79)",
+          "oklch(85% 0.08563 82.79)",
+          "oklch(95% 0.08563 82.79)"
+        ]
+      },
+      "warning-bg": {
+        "role": "secondary",
+        "displayName": "Quiet Ownership Paper",
+        "canonical": "#f7f3e9",
+        "tonalRamp": [
+          "oklch(15% 0.01392 88.68)",
+          "oklch(25% 0.01392 88.68)",
+          "oklch(35% 0.01392 88.68)",
+          "oklch(45% 0.01392 88.68)",
+          "oklch(60% 0.01392 88.68)",
+          "oklch(73% 0.01392 88.68)",
+          "oklch(85% 0.01392 88.68)",
+          "oklch(95% 0.01392 88.68)"
+        ]
+      },
+      "warning-dot": {
+        "role": "secondary",
+        "displayName": "Ownership Dot",
+        "canonical": "#9d7a32",
+        "tonalRamp": [
+          "oklch(15% 0.09919 82.68)",
+          "oklch(25% 0.09919 82.68)",
+          "oklch(35% 0.09919 82.68)",
+          "oklch(45% 0.09919 82.68)",
+          "oklch(60% 0.09919 82.68)",
+          "oklch(73% 0.09919 82.68)",
+          "oklch(85% 0.09919 82.68)",
+          "oklch(95% 0.09919 82.68)"
+        ]
+      },
+      "error": {
+        "role": "tertiary",
+        "displayName": "Failure Clay",
+        "canonical": "#94483d",
+        "tonalRamp": [
+          "oklch(15% 0.10472 29.78)",
+          "oklch(25% 0.10472 29.78)",
+          "oklch(35% 0.10472 29.78)",
+          "oklch(45% 0.10472 29.78)",
+          "oklch(60% 0.10472 29.78)",
+          "oklch(73% 0.10472 29.78)",
+          "oklch(85% 0.10472 29.78)",
+          "oklch(95% 0.10472 29.78)"
+        ]
+      },
+      "error-bg": {
+        "role": "tertiary",
+        "displayName": "Failure Paper",
+        "canonical": "#fff0ee",
+        "tonalRamp": [
+          "oklch(15% 0.01650 26.65)",
+          "oklch(25% 0.01650 26.65)",
+          "oklch(35% 0.01650 26.65)",
+          "oklch(45% 0.01650 26.65)",
+          "oklch(60% 0.01650 26.65)",
+          "oklch(73% 0.01650 26.65)",
+          "oklch(85% 0.01650 26.65)",
+          "oklch(95% 0.01650 26.65)"
+        ]
+      },
+      "terminal-bg": {
+        "role": "neutral",
+        "displayName": "Terminal Charcoal",
+        "canonical": "#20252c",
+        "tonalRamp": [
+          "oklch(15% 0.01502 256.80)",
+          "oklch(25% 0.01502 256.80)",
+          "oklch(35% 0.01502 256.80)",
+          "oklch(45% 0.01502 256.80)",
+          "oklch(60% 0.01502 256.80)",
+          "oklch(73% 0.01502 256.80)",
+          "oklch(85% 0.01502 256.80)",
+          "oklch(95% 0.01502 256.80)"
+        ]
+      },
+      "terminal-ink": {
+        "role": "neutral",
+        "displayName": "Terminal Text",
+        "canonical": "#e3e8ee",
+        "tonalRamp": [
+          "oklch(15% 0.00975 252.81)",
+          "oklch(25% 0.00975 252.81)",
+          "oklch(35% 0.00975 252.81)",
+          "oklch(45% 0.00975 252.81)",
+          "oklch(60% 0.00975 252.81)",
+          "oklch(73% 0.00975 252.81)",
+          "oklch(85% 0.00975 252.81)",
+          "oklch(95% 0.00975 252.81)"
+        ]
+      },
+      "terminal-output": {
+        "role": "neutral",
+        "displayName": "Terminal Output",
+        "canonical": "#bdc7d3",
+        "tonalRamp": [
+          "oklch(15% 0.02011 252.90)",
+          "oklch(25% 0.02011 252.90)",
+          "oklch(35% 0.02011 252.90)",
+          "oklch(45% 0.02011 252.90)",
+          "oklch(60% 0.02011 252.90)",
+          "oklch(73% 0.02011 252.90)",
+          "oklch(85% 0.02011 252.90)",
+          "oklch(95% 0.02011 252.90)"
+        ]
+      },
+      "dialog-scrim": {
+        "role": "neutral",
+        "displayName": "Dialog Scrim",
+        "canonical": "#262f3b50",
+        "tonalRamp": [
+          "oklch(15% 0.02515 255.72 / 0.3137)",
+          "oklch(25% 0.02515 255.72 / 0.3137)",
+          "oklch(35% 0.02515 255.72 / 0.3137)",
+          "oklch(45% 0.02515 255.72 / 0.3137)",
+          "oklch(60% 0.02515 255.72 / 0.3137)",
+          "oklch(73% 0.02515 255.72 / 0.3137)",
+          "oklch(85% 0.02515 255.72 / 0.3137)",
+          "oklch(95% 0.02515 255.72 / 0.3137)"
+        ]
+      },
+      "drawer-scrim": {
+        "role": "neutral",
+        "displayName": "Drawer Scrim",
+        "canonical": "#242b3640",
+        "tonalRamp": [
+          "oklch(15% 0.02255 259.36 / 0.2510)",
+          "oklch(25% 0.02255 259.36 / 0.2510)",
+          "oklch(35% 0.02255 259.36 / 0.2510)",
+          "oklch(45% 0.02255 259.36 / 0.2510)",
+          "oklch(60% 0.02255 259.36 / 0.2510)",
+          "oklch(73% 0.02255 259.36 / 0.2510)",
+          "oklch(85% 0.02255 259.36 / 0.2510)",
+          "oklch(95% 0.02255 259.36 / 0.2510)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Welcome Headline",
+        "purpose": "The introductory question; authored sizes adapt with the workbench."
+      },
+      "title": {
+        "displayName": "Computer Empty-State Title",
+        "purpose": "Task-computer empty and preparing states."
+      },
+      "dialog-title": {
+        "displayName": "Settings Title",
+        "purpose": "The model-connection dialog heading."
+      },
+      "body": {
+        "displayName": "Conversation Body",
+        "purpose": "Chinese assistant conversation; composer and explanatory text use local line-height variants."
+      },
+      "label": {
+        "displayName": "Control Label",
+        "purpose": "Compact button text. Settings labels use their observed 550 weight."
+      },
+      "status": {
+        "displayName": "Task Status",
+        "purpose": "Ready, running, paused, and unavailable state labels."
+      },
+      "meta": {
+        "displayName": "Supporting Metadata",
+        "purpose": "Workspace chrome, helpers, footer, and control strip."
+      },
+      "code": {
+        "displayName": "Editor Code",
+        "purpose": "Code editor text; terminal and tool records use compact monospace variants."
+      }
+    },
+    "shadows": [
+      {
+        "name": "settings-ambient",
+        "value": "0 18px 70px #25313b26",
+        "purpose": "The single ambient shadow beneath the native model-settings dialog."
+      }
+    ],
+    "motion": [
+      {
+        "name": "button-state",
+        "value": "background-color .16s, color .16s, box-shadow .16s",
+        "purpose": "Short state feedback on buttons."
+      },
+      {
+        "name": "composer-border",
+        "value": "border-color .18s",
+        "purpose": "Field-container focus feedback."
+      },
+      {
+        "name": "task-drawer",
+        "value": "transform .2s ease-out",
+        "purpose": "Open and close the task drawer at widths of 1000px or less."
+      },
+      {
+        "name": "activity-pulse",
+        "value": "breathe 1.5s ease-in-out infinite",
+        "purpose": "Task activity and loading skeleton opacity: 1, .45, 1."
+      },
+      {
+        "name": "stream-pulse",
+        "value": "breathe 1.6s ease-in-out infinite",
+        "purpose": "Streaming activity and the preparing frame, with the same opacity keyframes."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animation: none; transition: none; scroll-behavior: auto",
+        "purpose": "The implemented prefers-reduced-motion override."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "narrow-workbench",
+        "value": "1000px"
+      },
+      {
+        "name": "desktop-min",
+        "value": "1001px"
+      },
+      {
+        "name": "compact-desktop",
+        "value": "1180px"
+      },
+      {
+        "name": "wide-desktop",
+        "value": "1600px"
+      },
+      {
+        "name": "short-desktop-height",
+        "value": "780px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Charcoal action control for saving settings or a file.",
+      "html": "<button class=\"ds-primary\" type=\"button\">保存设置</button>",
+      "css": ".ds-primary{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid transparent;padding:10px 15px;border-radius:var(--radius,8px);font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"Noto Sans CJK SC\",\"Microsoft YaHei\",sans-serif;font-size:12px;font-weight:500;white-space:nowrap;cursor:pointer;transition:background-color .16s,color .16s,box-shadow .16s}.ds-primary:focus-visible{outline:2px solid #32715e;outline-offset:3px}.ds-primary:disabled{cursor:not-allowed;opacity:.48}@media(prefers-reduced-motion:reduce){.ds-primary{transition:none}}.ds-primary{background:var(--ink,#262a31);color:var(--canvas,#fff)}.ds-primary:hover{background:#414956}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Bordered quiet control for cancellation or secondary work.",
+      "html": "<button class=\"ds-secondary\" type=\"button\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M9 12V5a2 2 0 0 1 4 0v6-5a2 2 0 0 1 4 0v5-3a2 2 0 0 1 4 0v7c0 5-3 7-7 7-3 0-5-2-7-5l-3-4a2 2 0 0 1 3-3l2 2Z\"/></svg>接管浏览器</button>",
+      "css": ".ds-secondary{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid transparent;padding:10px 15px;border-radius:var(--radius,8px);font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"Noto Sans CJK SC\",\"Microsoft YaHei\",sans-serif;font-size:12px;font-weight:500;white-space:nowrap;cursor:pointer;transition:background-color .16s,color .16s,box-shadow .16s}.ds-secondary:focus-visible{outline:2px solid #32715e;outline-offset:3px}.ds-secondary:disabled{cursor:not-allowed;opacity:.48}@media(prefers-reduced-motion:reduce){.ds-secondary{transition:none}}.ds-secondary{background:var(--canvas,#fff);color:var(--ink,#262a31);border-color:#dbe0e7}.ds-secondary:hover{background:#f0f3f6}"
+    },
+    {
+      "name": "Settings Field",
+      "kind": "input",
+      "refersTo": "field-settings",
+      "description": "Model ID field with the implemented Chinese label, helper, and muted placeholder.",
+      "html": "<div class=\"ds-field\"><label class=\"ds-field-label\" for=\"ds-model-id\">模型 ID</label><input class=\"ds-field-input\" id=\"ds-model-id\" placeholder=\"选择或输入模型 ID\" autocomplete=\"off\" aria-describedby=\"ds-field-help\"><p class=\"ds-field-help\" id=\"ds-field-help\">选择支持图像的模型，可以让 agent 查看浏览器截图。</p></div>",
+      "css": ".ds-field{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"Noto Sans CJK SC\",\"Microsoft YaHei\",sans-serif;color:var(--ink,#262a31);width:100%}.ds-field-label{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:550;margin:18px 0 8px}.ds-field-input{box-sizing:border-box;width:100%;border:1px solid #d8dfe7;border-radius:7px;padding:11px;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"Noto Sans CJK SC\",\"Microsoft YaHei\",sans-serif;font-size:12px;background:var(--canvas,#fff);color:var(--ink,#262a31);min-height:39px;caret-color:var(--green,#28735b)}.ds-field-input::placeholder{color:var(--muted,#626b78)}.ds-field-input:focus-visible,.ds-field-input:focus{outline:2px solid #32715e;outline-offset:1px}.ds-field-help{font-size:10px;line-height:1.8;color:var(--muted,#626b78);margin:7px 0 0}"
+    },
+    {
+      "name": "Task Navigation",
+      "kind": "nav",
+      "refersTo": "task-nav",
+      "description": "A current task row with a clipped title and a state marker.",
+      "html": "<nav class=\"ds-task-nav\" aria-label=\"任务导航\"><button class=\"ds-task-nav-item ds-task-nav-active\" type=\"button\" aria-current=\"page\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 4h16v13H8l-4 4Z\"/></svg><span class=\"ds-task-nav-title\">构建页面，并在浏览器里测试</span><span class=\"ds-task-nav-dot\" title=\"环境就绪\"></span></button></nav>",
+      "css": ".ds-task-nav{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"Noto Sans CJK SC\",\"Microsoft YaHei\",sans-serif;color:var(--ink,#262a31)}.ds-task-nav-item{box-sizing:border-box;display:flex;align-items:center;gap:9px;border:0;border-radius:7px;background:transparent;color:inherit;width:100%;justify-content:flex-start;text-align:left;padding:11px 10px;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"Noto Sans CJK SC\",\"Microsoft YaHei\",sans-serif;font-size:13px;min-height:42px;cursor:pointer;transition:background-color .16s,color .16s,box-shadow .16s}.ds-task-nav-item:hover{background:#e9ecf0}.ds-task-nav-active{background:#e3e8e5;color:#234c3a}.ds-task-nav-title{white-space:nowrap;text-overflow:ellipsis;overflow:hidden;flex:1;min-width:0}.ds-task-nav-dot{width:5px;height:5px;border-radius:50%;background:var(--green,#28735b);flex-shrink:0}.ds-task-nav-item:focus-visible{outline:2px solid #32715e;outline-offset:3px}@media(prefers-reduced-motion:reduce){.ds-task-nav-item{box-sizing:border-box;transition:none}}"
+    },
+    {
+      "name": "Task Computer Panel",
+      "kind": "card",
+      "refersTo": "computer-panel",
+      "description": "Source-derived computer container in its empty-browser state; tab actions belong to the React application.",
+      "html": "<section class=\"ds-computer\" aria-label=\"任务电脑\"><div class=\"ds-computer-tabs\" role=\"tablist\" aria-label=\"电脑视图\"><button class=\"ds-computer-tab ds-computer-selected\" type=\"button\" role=\"tab\" aria-selected=\"true\" aria-controls=\"ds-computer-browser\" id=\"ds-computer-tab-browser\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M3 9h18M7 6.5h.01m3 0h.01\"/></svg>浏览器</button><button class=\"ds-computer-tab\" type=\"button\" role=\"tab\" aria-selected=\"false\" aria-controls=\"ds-computer-code\" tabindex=\"-1\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m8 6-6 6 6 6m8-12 6 6-6 6m-3-14-2 16\"/></svg>代码</button><button class=\"ds-computer-tab\" type=\"button\" role=\"tab\" aria-selected=\"false\" aria-controls=\"ds-computer-terminal\" tabindex=\"-1\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"m7 9 3 3-3 3m6 1h4\"/></svg>终端</button></div><div class=\"ds-computer-empty\" role=\"tabpanel\" id=\"ds-computer-browser\" aria-labelledby=\"ds-computer-tab-browser\"><div class=\"ds-empty-window\" aria-hidden=\"true\"><div class=\"ds-empty-bar\"><i class=\"ds-empty-dot\"></i><i class=\"ds-empty-dot\"></i><i class=\"ds-empty-dot\"></i><span class=\"ds-empty-address\"></span></div><div class=\"ds-empty-body\"><svg width=\"34\" height=\"34\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M3 9h18M7 6.5h.01m3 0h.01\"/></svg></div></div><h2 class=\"ds-computer-heading\">给 pi 一台可以动手的电脑</h2><p class=\"ds-computer-copy\">任务开始后，这里会显示真实的浏览器。<br>你可以观看操作，也可以随时接管。</p></div><div id=\"ds-computer-code\" hidden></div><div id=\"ds-computer-terminal\" hidden></div><footer class=\"ds-computer-footer\"><span class=\"ds-computer-location\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 7V5h6l2 2h10v12H3Z\"/></svg> /workspace</span><span>独立环境 · Linux</span></footer></section>",
+      "css": ".ds-computer{display:flex;flex-direction:column;border:1px solid #dfe3e9;border-radius:12px;background:var(--canvas,#fff);color:var(--ink,#262a31);font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"Noto Sans CJK SC\",\"Microsoft YaHei\",sans-serif;min-width:0;overflow:hidden}.ds-computer-tabs{box-sizing:border-box;display:flex;align-items:center;gap:3px;border-bottom:1px solid var(--line,#e6e8ed);padding:0 14px;height:49px}.ds-computer-tab{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;background:transparent;height:49px;padding:0 12px;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"Noto Sans CJK SC\",\"Microsoft YaHei\",sans-serif;font-size:12px;color:var(--muted,#626b78);border-bottom:2px solid transparent;cursor:pointer;transition:background-color .16s,color .16s,box-shadow .16s}.ds-computer-selected{color:var(--ink,#262a31);border-bottom-color:var(--ink,#262a31);font-weight:550}.ds-computer-tab:hover{color:var(--ink,#262a31);background:#f7f8fa}.ds-computer-tab:focus-visible{outline:2px solid #32715e;outline-offset:3px}.ds-computer-empty{display:flex;align-items:center;justify-content:center;flex-direction:column;padding:30px 20px;text-align:center;min-height:250px}.ds-empty-window{box-sizing:border-box;width:176px;height:120px;border:1px solid #d7dde5;border-radius:10px;background:#fafbfc;overflow:hidden;margin-bottom:29px;color:#808b9a}.ds-empty-bar{box-sizing:border-box;height:26px;border-bottom:1px solid #e4e8ef;background:#f0f2f5;display:flex;align-items:center;gap:4px;padding:0 9px}.ds-empty-dot{display:block;width:4px;height:4px;border-radius:50%;background:#a7b1be}.ds-empty-address{height:8px;background:#dce2e9;border-radius:3px;width:70px;margin-left:11px}.ds-empty-body{height:93px;display:grid;place-items:center}.ds-computer-heading{font-size:17px;font-weight:550;margin:0 0 12px;letter-spacing:-.025em;text-wrap:balance}.ds-computer-copy{font-size:12px;line-height:1.95;color:var(--muted,#626b78);margin:0;max-width:36ch}.ds-computer-footer{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line,#e6e8ed);padding:9px 15px;background:#fbfcfd;font-size:10px;color:var(--muted,#626b78);font-variant-numeric:tabular-nums}.ds-computer-location{display:flex;align-items:center;gap:6px}@media(prefers-reduced-motion:reduce){.ds-computer-tab{box-sizing:border-box;transition:none}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Daylight Task Desk",
+    "overview": "PiCoding feels like a daylight task desk: porcelain-white working surfaces, cool gray chrome, charcoal controls, and restrained green feedback. The visual system keeps the working artifact prominent and gives the surrounding interface a calm, practical density. Crisp dividers and tonal changes establish hierarchy.\n\nChinese system typography carries instructions, conversation, and navigation; monospace identifies executable material. Soft corners group useful work without turning every item into a card. Motion marks preparation, streaming, or a control change, and respects reduced-motion preferences. Icons and the pi mark are inline SVG; this implementation has no raster illustration layer.\n\nThis document is a scan of the implemented source and the resolved workbench brief. Browser rendering and live Docker execution remain unverified because workspace permissions blocked local sockets. The descriptions and component specimens are source evidence, not screenshot or end-to-end findings.",
+    "keyCharacteristics": [
+      "Porcelain canvas, neutral chrome, and charcoal action priority.",
+      "Green readiness and connection feedback; amber human ownership; red failure.",
+      "Readable Chinese system text paired with monospace code and commands.",
+      "Flat working surfaces, crisp dividers, and one elevated settings dialog.",
+      "Structural adaptation of the workbench at narrow widths."
+    ],
+    "rules": [
+      {
+        "name": "The Functional Color Rule",
+        "body": "Use green for readiness, connection, live execution, links, and interaction feedback. Use amber for a pause or human ownership and red for failure. Charcoal carries action priority.",
+        "section": "colors"
+      },
+      {
+        "name": "The Chinese Reading Rule",
+        "body": "Use the system sans stack for Chinese interface text and conversation. Use the monospace stack for code, commands, paths, and tool arguments; keep it out of ordinary interface labels.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Workspace Rule",
+        "body": "Working surfaces use borders and tonal separation. Reserve the ambient shadow for the modal settings dialog; do not add a shadow tier to every panel.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** use the named porcelain, chrome, charcoal, and semantic state colors from the frontmatter.",
+      "**Do** retain the system CJK sans stack and the separate code stack.",
+      "**Do** use compact control corners, broader panel corners, and the softer dialog corner.",
+      "**Do** preserve visible focus boundaries on borderless field wrappers and the lighter terminal focus color.",
+      "**Do** adapt the workbench with its structural conversation/computer switch and managed task drawer.",
+      "**Do** let setup, unavailable, loading, and ownership states explain the next useful action in Chinese.",
+      "**Do** disable animations and transitions when reduced motion is requested."
+    ],
+    "donts": [
+      "**Don't** use semantic green, amber, or red as general decorative backgrounds.",
+      "**Don't** introduce decorative imagery, gradients, or heavy panel shadows into this visual system.",
+      "**Don't** substitute a promotional illustration for the working browser artifact.",
+      "**Don't** let hidden panels or a closed drawer retain keyboard interaction.",
+      "**Don't** imply that human control has begun while the task is still settling.",
+      "**Don't** describe source-derived component specimens as browser-verified output."
+    ]
+  }
+}
