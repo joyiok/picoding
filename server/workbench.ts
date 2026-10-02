@@ -24,15 +24,27 @@ export class Workbench {
   private startingAbort = new Map<string, AbortController>();
   private sendAbort = new Map<string, AbortController>();
   private preparing = new Map<string, Promise<AgentSession>>();
+  private operations = new Map<string, Set<Promise<unknown>>>();
+  private stopping = new Map<string, Promise<void>>();
+  private removing = new Map<string, Promise<void>>();
   private resourceChange?: Promise<unknown>;
   private closing = false;
   private restoring = false;
   constructor(readonly store: TaskStore, readonly settings: SettingsStore, private readonly makeSandbox: (id: string) => Sandbox & { start(signal?: AbortSignal): Promise<void> } = id => new DockerSandbox(id), readonly resources = new PiResources(settings.directory)) {}
 
-  private available() {
+  private available(id?: string) {
     if (this.closing) throw new HttpError(503, '工作台正在关闭，请重启后继续');
     if (this.restoring) throw new HttpError(503, '工作台正在恢复任务环境，请稍后重试');
     if (this.resourceChange) throw new HttpError(409, 'pi 包正在更新，请完成后继续任务');
+    if (id && this.removing.has(id)) throw new HttpError(409, '任务正在删除，请等待操作结束');
+    if (id && this.stopping.has(id)) throw new HttpError(409, '任务环境正在停止，请等待操作结束');
+  }
+
+  private async track<T>(id: string, operation: Promise<T>): Promise<T> {
+    const group = this.operations.get(id) || new Set<Promise<unknown>>();
+    group.add(operation); this.operations.set(id, group);
+    try { return await operation; }
+    finally { group.delete(operation); if (!group.size) this.operations.delete(id); }
   }
 
   async changeResources(action: PiPackageAction, source: unknown) {
@@ -108,7 +120,7 @@ export class Workbench {
   }
 
   validateStart(id: string) {
-    this.available();
+    this.available(id);
     this.store.get(id);
     if (this.sandboxes.has(id)) throw new HttpError(409, '任务环境已经运行；如需重启，请先停止环境');
     const active = this.store.list().filter(other => other.id !== id && !['error', 'stopped'].includes(other.status)).length;
@@ -174,8 +186,12 @@ export class Workbench {
   }
 
   async send(id: string, text: string, alreadyRecorded = false) {
-    const task = this.store.get(id);
     this.validateSend(id);
+    return this.track(id, this.sendMessage(id, text, alreadyRecorded));
+  }
+
+  private async sendMessage(id: string, text: string, alreadyRecorded: boolean) {
+    const task = this.store.get(id);
     const sandbox = this.sandbox(id);
     task.status = 'running'; delete task.error;
     delete task.pendingPrompt;
@@ -206,6 +222,11 @@ export class Workbench {
   }
 
   async abort(id: string, takeover = false) {
+    this.available(id);
+    return this.track(id, this.pause(id, takeover));
+  }
+
+  private async pause(id: string, takeover: boolean) {
     const task = this.store.get(id);
     const sandbox = this.sandbox(id);
     if (task.status === 'pausing') throw new HttpError(409, '正在等待当前操作停止');
@@ -218,42 +239,66 @@ export class Workbench {
     catch (error) {
       task.status = 'error'; task.error = `停止当前操作失败：${errorMessage(error)}`; this.changed(task); await this.store.save(task); throw error;
     }
-    task.status = takeover ? 'paused' : 'ready';
+    if (!this.stopping.has(id) && !this.closing) task.status = takeover ? 'paused' : 'ready';
     for (const message of task.messages) message.streaming = false;
     this.changed(task); await this.store.save(task);
   }
 
   async release(id: string) {
+    this.available(id);
+    return this.track(id, this.releaseComputer(id));
+  }
+
+  private async releaseComputer(id: string) {
     const task = this.store.get(id);
     if (task.status !== 'paused') throw new HttpError(409, '任务电脑当前未被接管');
     await this.sandbox(id).request('/terminal/release', {});
     // Synchronize the tab selected manually in Chromium before pi can act again.
     this.emit(id, { type: 'browser', state: await sandboxApi.browser(this.sandbox(id)) });
-    task.status = 'ready'; this.changed(task); await this.store.save(task);
+    if (!this.stopping.has(id) && !this.closing) task.status = 'ready';
+    this.changed(task); await this.store.save(task);
   }
 
   async command(id: string, command: string) {
+    this.available(id);
+    return this.track(id, this.runCommand(id, command));
+  }
+
+  private async runCommand(id: string, command: string) {
     const task = this.store.get(id);
     if (!['ready', 'paused'].includes(task.status) || this.manualCommands.has(id)) throw new HttpError(409, '请先停止 agent 或等待当前命令完成');
     const controller = new AbortController(); this.manualCommands.set(id, controller);
     try {
-      const result = await sandboxApi.command(this.sandbox(id), command, controller.signal);
+      const result = await sandboxApi.command(this.sandbox(id), command, controller.signal).catch(error => {
+        if (!controller.signal.aborted) throw error;
+        return { output: '[操作已取消]', exitCode: null };
+      });
       const entry: TerminalEntry = { id: randomUUID(), command, ...result, createdAt: new Date().toISOString() };
       this.emit(id, { type: 'terminal', entry }); this.emit(id, { type: 'files_changed' }); return entry;
     } finally { this.manualCommands.delete(id); }
   }
 
   async stop(id: string) {
-    this.sendAbort.get(id)?.abort();
-    await this.preparing.get(id)?.catch(() => {});
-    this.startingAbort.get(id)?.abort();
-    await this.starting.get(id);
+    const existing = this.stopping.get(id) || this.removing.get(id);
+    if (existing) return existing;
+    const operation = this.stopEnvironment(id);
+    this.stopping.set(id, operation);
+    try { await operation; }
+    finally { if (this.stopping.get(id) === operation) this.stopping.delete(id); }
+  }
+
+  private async stopEnvironment(id: string) {
     const task = this.store.get(id);
     task.status = 'pausing'; this.changed(task);
+    this.sendAbort.get(id)?.abort();
+    this.startingAbort.get(id)?.abort();
     this.manualCommands.get(id)?.abort();
     const session = this.sessions.get(id);
     try {
       session?.clearQueue(); await session?.abort();
+      // Cancellation only requests a stop. Wait for final events and saves before
+      // closing the worker or allowing deletion of the task's persisted data.
+      await Promise.allSettled([...(this.operations.get(id) || []), this.starting.get(id)]);
       this.sessions.get(id)?.dispose(); this.sessions.delete(id);
       await this.sandboxes.get(id)?.stop(); this.sandboxes.delete(id);
       task.status = 'stopped'; delete task.error;
@@ -262,10 +307,20 @@ export class Workbench {
   }
 
   async remove(id: string) {
-    await this.stop(id);
-    await new DockerSandbox(id).destroy();
+    this.available(id);
+    const stopping = this.stop(id);
+    const operation = this.removeTask(id, stopping);
+    this.removing.set(id, operation);
+    try { await operation; }
+    finally { if (this.removing.get(id) === operation) this.removing.delete(id); }
+  }
+
+  private async removeTask(id: string, stopping: Promise<void>) {
+    await stopping;
+    await this.makeSandbox(id).destroy();
     clearTimeout(this.dirty.get(id)); this.dirty.delete(id);
     await this.store.delete(id);
+    this.assistantIds.delete(id); this.events.forget(id);
   }
 
   invalidateSessions() {
@@ -275,7 +330,7 @@ export class Workbench {
   }
 
   validateSend(id: string) {
-    this.available();
+    this.available(id);
     const task = this.store.get(id);
     if (task.status !== 'ready') throw new HttpError(409, task.status === 'paused' ? '请先归还电脑，再继续任务' : '请等待当前操作完成或先启动环境');
     if (this.manualCommands.has(id)) throw new HttpError(409, '请等待终端命令完成，再发送任务');
@@ -283,7 +338,7 @@ export class Workbench {
   }
 
   validateEdit(id: string) {
-    this.available();
+    this.available(id);
     if (!['ready', 'paused'].includes(this.store.get(id).status) || this.manualCommands.has(id)) throw new HttpError(409, '请先停止 agent 或等待终端命令完成，再修改文件');
   }
 
@@ -295,8 +350,12 @@ export class Workbench {
     for (const controller of this.manualCommands.values()) controller.abort();
     await Promise.allSettled([...this.preparing.values()]);
     await Promise.all([...this.starting.values()]);
-    for (const session of this.sessions.values()) { session.clearQueue(); await session.abort(); session.dispose(); }
+    for (const session of this.sessions.values()) { session.clearQueue(); await session.abort(); }
+    await Promise.allSettled([...this.operations.values()].flatMap(group => [...group]).concat([...this.stopping.values(), ...this.removing.values()]));
+    for (const session of this.sessions.values()) session.dispose();
+    this.sessions.clear();
     await Promise.all([...this.sandboxes.values()].map(sandbox => sandbox.stop()));
+    this.sandboxes.clear();
     for (const task of this.store.list()) if (!['error', 'stopped'].includes(task.status)) { task.status = 'stopped'; await this.store.save(task); }
     for (const timer of this.dirty.values()) clearTimeout(timer);
     this.dirty.clear(); this.events.close(); await this.store.flush();
