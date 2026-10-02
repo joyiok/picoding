@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { BrowserAction, BrowserState, CommandResult, FileContent, FileEntry, FileWriteOptions } from '../shared/types.js';
 import { config } from './config.js';
 import { errorMessage, HttpError } from './http.js';
@@ -52,7 +53,8 @@ export class DockerSandbox implements Sandbox {
   get name() { return `picoding-${this.id}`; }
   get volume() { return `picoding-work-${this.id}`; }
 
-  async start() {
+  async start(signal?: AbortSignal) {
+    signal?.throwIfAborted();
     // Only remove a container with this task's exact, application-generated name.
     await this.stop();
     try {
@@ -77,8 +79,9 @@ export class DockerSandbox implements Sandbox {
       const deadline = Date.now() + 45_000;
       let lastError = '';
       while (Date.now() < deadline) {
-        try { await this.request('/health', undefined, AbortSignal.timeout(2000)); return; }
-        catch (error) { lastError = errorMessage(error); await new Promise(resolve => setTimeout(resolve, 500)); }
+        signal?.throwIfAborted();
+        try { await this.request('/health', undefined, signal ? AbortSignal.any([signal, AbortSignal.timeout(2000)]) : AbortSignal.timeout(2000)); return; }
+        catch (error) { lastError = errorMessage(error); await delay(500, undefined, { signal }); }
       }
       throw new Error(`沙盒启动失败：${lastError}`);
     } catch (error) { await this.stop().catch(() => {}); throw error; }
@@ -99,6 +102,10 @@ export class DockerSandbox implements Sandbox {
   }
 
   async stop() {
+    // Let the worker close Chromium's persistent profile and flush storage.
+    // Killing it immediately can lose changes made just before Stop.
+    try { await docker(['stop', '--time', '5', this.name], 10_000); }
+    catch (error) { if (!/No such container/i.test(errorMessage(error))) throw error; }
     try { await docker(['rm', '-f', this.name]); }
     catch (error) { if (!/No such container/i.test(errorMessage(error))) throw error; }
     try { await docker(['rm', '-f', 'picoding-proxy-' + this.id]); }

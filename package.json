@@ -14,7 +14,9 @@
     "start": "node dist/server/index.js",
     "check": "tsc --noEmit",
     "test": "node --import tsx --experimental-test-isolation=none --test test/*.test.ts",
-    "sandbox:build": "docker build -t picoding-sandbox:local -f sandbox/Dockerfile .",
+    "verify": "npm test && npm run build",
+    "test:integration": "npm run build && node --import tsx scripts/verify-sandbox.ts",
+    "sandbox:build": "node --import tsx scripts/build-sandbox.ts",
     "doctor": "node --import tsx scripts/doctor.ts"
   },
   "dependencies": {

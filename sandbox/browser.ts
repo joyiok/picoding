@@ -26,6 +26,9 @@ export class TaskBrowser {
     this.context = await chromium.launchPersistentContext(profile, {
       executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
       headless: false, viewport: null, acceptDownloads: true,
+      // The worker owns shutdown. Playwright's default signal handler plus
+      // context.close() would close twice and force-kill the profile writer.
+      handleSIGTERM: false, handleSIGINT: false, handleSIGHUP: false,
       downloadsPath: '/workspace/downloads',
       ...(proxy ? { proxy: { server: proxy.protocol + '//' + proxy.host, username: decodeURIComponent(proxy.username), password: decodeURIComponent(proxy.password), bypass: 'localhost,127.0.0.1,[::1]' } } : {}),
       args: ['--no-sandbox', '--disable-dev-shm-usage', '--start-maximized', '--window-size=1280,800'],

@@ -17,8 +17,16 @@ Give pi a task computer: real files, shell execution and a preinstalled browser,
 ## Operating Context
 Runs on the user's machine with a Docker daemon. Each task has its own container and persistent project volume. The Web server manages pi sessions. Tools operate inside the container. The browser shown to the user is the browser controlled by pi.
 
+Production mode runs the compiled Node server, serving the Web app and API on loopback. The port defaults to 4310 and is configurable with PICODING_PORT; development forwarding follows it. Installation and restart acceptance has been verified on Linux/WSL with Docker and Node 22.22.1, against the minimum Node 22.19 requirement. The sandbox build command forwards standard HTTP(S)/NO_PROXY arguments, selects host build networking for Linux loopback proxies unless PICODING_BUILD_NETWORK overrides it, and honors PICODING_SANDBOX_IMAGE. Task runtime networking stays on the bridge.
+
 ## Capabilities and Constraints
 Task creation and history; streamed agent messages and tool calls; isolated project files and commands; preinstalled Chromium; live viewing and human takeover; code editing and diffs; project export. Model API credentials are provided by the user. This first version has no account system or multi-user deployment. Docker is required for task execution.
+
+Confirmed: graceful control-server shutdown cancels model requests and sandbox startup/import/baseline initialization, stops task containers and preserves project files, tool history, pi sessions and the Chromium profile. Pending initial requests stay available for retry without being executed during shutdown or duplicated in user-message history. Restart restores stopped tasks; task services and the PTY must be started again.
+
+After a host crash, startup first acquires its listening port and then removes only containers owned by recorded interrupted task IDs, retaining project volumes. An occupied port exits with failure without changing existing tasks. Authentication errors are redacted and can be retried; stalled model requests can be cancelled and resumed. Worker-owned idempotent browser shutdown preserves Chromium localStorage through graceful container restart.
+
+The finite local single-user flows are implemented and tested. npm run verify reproduces tests plus a production build; npm run test:integration builds and exercises the actual compiled server, real Docker/Chromium/PTY and private temporary data against a deterministic local SSE model with fictional credentials. User settings remain untouched. External real model providers and installation on other operating systems remain unverified; snapshots, task branches, accounts and cloud scheduling are outside this local scope.
 
 Confirmed: a blank workspace or public HTTP(S) Git import can be created without model credentials; Docker and the task image are required. Git import accepts an optional branch, finishes before workspace Git baseline initialization, and retains pendingImport after failure for retry without overwriting an existing project. Agent execution still requires the user's model configuration.
 

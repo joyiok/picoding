@@ -96,7 +96,9 @@ server.on('upgrade', (request, socket, head) => {
   proxyUpgrade(request, socket, head, 'http://127.0.0.1:6080', '/websockify');
 });
 server.listen(4311, '0.0.0.0', () => console.log('Sandbox worker ready on 4311'));
+let stopping = false;
 async function shutdown() {
+  if (stopping) return; stopping = true;
   for (const command of activeCommands) command.abort();
   await terminal.close();
   await browser.close(); server.close();

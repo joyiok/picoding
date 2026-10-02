@@ -5,6 +5,7 @@ import { config } from './config.js';
 import { HttpError } from './http.js';
 
 export class TaskStore {
+  readonly interruptedIds: string[] = [];
   private tasks = new Map<string, Task>();
   private writes = new Map<string, Promise<void>>();
   constructor(readonly directory = join(config.dataDir, 'tasks')) {}
@@ -17,6 +18,7 @@ export class TaskStore {
         const task = JSON.parse(await readFile(join(this.directory, file), 'utf8')) as Task;
         if (`${task.id}.json` !== file || !Array.isArray(task.messages)) continue;
         if (!['stopped', 'error'].includes(task.status)) {
+          this.interruptedIds.push(task.id);
           task.status = 'stopped'; task.error = '工作台已重启，点击「启动环境」继续此任务';
         }
         for (const message of task.messages) message.streaming = false;

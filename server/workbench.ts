@@ -18,9 +18,30 @@ export class Workbench {
   private dirty = new Map<string, ReturnType<typeof setTimeout>>();
   private assistantIds = new Map<string, string>();
   private manualCommands = new Map<string, AbortController>();
-  constructor(readonly store: TaskStore, readonly settings: SettingsStore, private readonly makeSandbox: (id: string) => Sandbox & { start(): Promise<void> } = id => new DockerSandbox(id)) {}
+  private startingAbort = new Map<string, AbortController>();
+  private closing = false;
+  private restoring = false;
+  constructor(readonly store: TaskStore, readonly settings: SettingsStore, private readonly makeSandbox: (id: string) => Sandbox & { start(signal?: AbortSignal): Promise<void> } = id => new DockerSandbox(id)) {}
+
+  private available() {
+    if (this.closing) throw new HttpError(503, '工作台正在关闭，请重启后继续');
+    if (this.restoring) throw new HttpError(503, '工作台正在恢复任务环境，请稍后重试');
+  }
+
+  async restoreInterruptedSandboxes() {
+    this.restoring = true;
+    try {
+      await Promise.all(this.store.interruptedIds.map(async id => {
+        const task = this.store.get(id);
+        try { await this.makeSandbox(id).stop(); }
+        catch (error) { task.error = `清理上次任务环境失败，请检查 Docker 后重新启动：${errorMessage(error)}`; }
+        await this.store.save(task);
+      }));
+    } finally { this.restoring = false; }
+  }
 
   async create(title: string, prompt?: string, source?: GitProjectSource) {
+    this.available();
     if (this.store.list().filter(task => !['error', 'stopped'].includes(task.status)).length >= config.maxTasks) throw new HttpError(409, `最多同时运行 ${config.maxTasks} 个环境，请先停止一个任务`);
     const now = new Date().toISOString();
     const task: Task = { id: randomUUID(), title, status: 'creating', createdAt: now, updatedAt: now, messages: prompt ? [{ id: randomUUID(), role: 'user', text: prompt, createdAt: now }] : [], tools: [], terminal: [], pendingPrompt: prompt, ...(source ? { source, pendingImport: source } : {}) };
@@ -35,29 +56,35 @@ export class Workbench {
     const task = this.store.get(id);
     task.status = 'creating'; delete task.error; this.changed(task);
     const sandbox = this.makeSandbox(id);
+    const controller = new AbortController(); this.startingAbort.set(id, controller);
     const operation = (async () => {
       try {
-        await sandbox.start();
+        await sandbox.start(controller.signal); controller.signal.throwIfAborted();
         this.sandboxes.set(id, sandbox);
         if (task.pendingImport) {
-          await sandbox.request('/import', task.pendingImport);
+          await sandbox.request('/import', task.pendingImport, controller.signal);
+          controller.signal.throwIfAborted();
           delete task.pendingImport;
           await this.store.save(task);
         }
         // Establish a baseline for a fresh workspace without committing user work on restart.
-        await sandboxApi.command(sandbox, 'if [ ! -d .git ]; then git init -q && git -c user.name=PiCoding -c user.email=local@picoding.invalid commit --allow-empty -qm "Initial workspace"; fi; if [ -d .git/info ]; then printf "\\n.picoding/\\nnode_modules/\\n" >> .git/info/exclude; fi');
+        await sandboxApi.command(sandbox, 'if [ ! -d .git ]; then git init -q && git -c user.name=PiCoding -c user.email=local@picoding.invalid commit --allow-empty -qm "Initial workspace"; fi; if [ -d .git/info ]; then printf "\\n.picoding/\\nnode_modules/\\n" >> .git/info/exclude; fi', controller.signal);
+        controller.signal.throwIfAborted();
         task.status = 'ready'; this.changed(task);
-        if (task.pendingPrompt) void this.send(id, task.pendingPrompt, true).catch(error => console.error('任务执行失败', errorMessage(error)));
+        if (task.pendingPrompt && !this.closing) void this.send(id, task.pendingPrompt, true).catch(error => console.error('任务执行失败', errorMessage(error)));
       } catch (error) {
-        task.status = 'error'; task.error = errorMessage(error); this.changed(task);
+        task.status = controller.signal.aborted ? 'stopped' : 'error';
+        if (controller.signal.aborted) delete task.error; else task.error = errorMessage(error);
+        this.changed(task);
         this.sandboxes.delete(id); await sandbox.stop().catch(() => {});
-      } finally { this.starting.delete(id); await this.store.save(task); }
+      } finally { this.starting.delete(id); this.startingAbort.delete(id); await this.store.save(task); }
     })();
     this.starting.set(id, operation);
     return operation;
   }
 
   validateStart(id: string) {
+    this.available();
     this.store.get(id);
     if (this.sandboxes.has(id)) throw new HttpError(409, '任务环境已经运行；如需重启，请先停止环境');
     const active = this.store.list().filter(other => other.id !== id && !['error', 'stopped'].includes(other.status)).length;
@@ -182,6 +209,7 @@ export class Workbench {
   }
 
   async stop(id: string) {
+    this.startingAbort.get(id)?.abort();
     await this.starting.get(id);
     const task = this.store.get(id);
     task.status = 'pausing'; this.changed(task);
@@ -210,6 +238,7 @@ export class Workbench {
   }
 
   validateSend(id: string) {
+    this.available();
     const task = this.store.get(id);
     if (task.status !== 'ready') throw new HttpError(409, task.status === 'paused' ? '请先归还电脑，再继续任务' : '请等待当前操作完成或先启动环境');
     if (this.manualCommands.has(id)) throw new HttpError(409, '请等待终端命令完成，再发送任务');
@@ -217,12 +246,15 @@ export class Workbench {
   }
 
   validateEdit(id: string) {
+    this.available();
     if (!['ready', 'paused'].includes(this.store.get(id).status) || this.manualCommands.has(id)) throw new HttpError(409, '请先停止 agent 或等待终端命令完成，再修改文件');
   }
 
   async shutdown() {
-    await Promise.all([...this.starting.values()]);
+    this.closing = true;
+    for (const controller of this.startingAbort.values()) controller.abort();
     for (const controller of this.manualCommands.values()) controller.abort();
+    await Promise.all([...this.starting.values()]);
     for (const session of this.sessions.values()) { session.clearQueue(); await session.abort(); session.dispose(); }
     await Promise.all([...this.sandboxes.values()].map(sandbox => sandbox.stop()));
     for (const task of this.store.list()) if (!['error', 'stopped'].includes(task.status)) { task.status = 'stopped'; await this.store.save(task); }
