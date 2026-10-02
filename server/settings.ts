@@ -49,7 +49,7 @@ export class SettingsStore {
   }
   key() { return this.settings.apiKey || process.env[this.settings.protocol === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY']; }
 
-  async update(value: ModelSettingsInput) {
+  private candidate(value: ModelSettingsInput): ModelSettings {
     if (!['anthropic', 'openai'].includes(value.protocol)) throw new HttpError(400, '请选择 OpenAI 或 Anthropic API 格式');
     const model = requireString(value.model, '模型 ID', 200).trim();
     const limits = capabilities({
@@ -66,7 +66,16 @@ export class SettingsStore {
     const sameEndpoint = this.settings.protocol === value.protocol && this.settings.baseUrl.replace(/\/+$/, '') === baseUrl;
     const apiKey = value.apiKey?.trim();
     if (!apiKey && !sameEndpoint && this.key()) throw new HttpError(400, '更换 API 格式或地址时，请重新填写密钥');
-    const next: ModelSettings = { protocol: value.protocol, model, baseUrl, ...limits, apiKey: apiKey || (sameEndpoint ? this.settings.apiKey : undefined) };
+    return { protocol: value.protocol, model, baseUrl, ...limits, apiKey: apiKey || (sameEndpoint ? this.settings.apiKey : undefined) };
+  }
+
+  preview(value: ModelSettingsInput): ModelSettings {
+    const next = this.candidate(value);
+    return { ...next, apiKey: next.apiKey || process.env[next.protocol === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'] };
+  }
+
+  async update(value: ModelSettingsInput) {
+    const next = this.candidate(value);
     const serialized = JSON.stringify(next);
     await writeFile(`${this.file}.tmp`, serialized, { mode: 0o600 });
     await rename(`${this.file}.tmp`, this.file);

@@ -26,6 +26,8 @@ Confirmed: file and folder uploads preserve binary bytes and relative subdirecto
 
 Task networking can inherit backend HTTPS_PROXY/HTTP_PROXY or use PICODING_SANDBOX_PROXY; none disables the task proxy. A separate authenticated relay connects a loopback proxy while task containers stay on the Docker bridge. Container-local development URLs bypass the proxy.
 
+Backend model requests inherit HTTP(S)_PROXY through an explicit undici dispatcher for native Node fetch. PICODING_MODEL_PROXY can override the model proxy or disable it with none, independently of task networking. Existing NO_PROXY entries are retained, and localhost, 127.0.0.1 and ::1 always bypass the proxy so internal worker credentials travel directly.
+
 Confirmed: each running task exposes one real Unix PTY with a persistent Bash shell. Working directory and environment state survive terminal/browser view switches and webpage reconnects while that task environment is running. Recent output replays up to 256 KiB. Multiple webpages for the same task share the shell, with dimensions following the active window. Stopping the environment ends the PTY; the project volume and Bash history remain, and restart creates a new shell.
 
 The interactive terminal is read-only by default. Taking over the computer pauses the agent before input is enabled; the host requires paused state for every WebSocket input message. Returning control interrupts the foreground program and waits for a Bash prompt while nohup background services keep running. Agent commands and the existing independent command form remain in execution history rather than the interactive PTY.
@@ -33,6 +35,10 @@ The interactive terminal is read-only by default. Taking over the computer pause
 Terminal UI offers Ctrl+C, Tab and Enter controls and an optional screen-reader output mode, off by default. The xterm view loads lazily and fits its container. WebSocket message limits, bounded queues, ACK backpressure and heartbeat cleanup govern the terminal stream.
 
 Confirmed: model configuration selects the OpenAI or Anthropic API format. The user provides the API endpoint, model ID and key. Both protocols accept custom gateways; no preconfigured service or model catalogue is offered.
+
+Confirmed: Test connection uses the current unsaved form values for one short official pi SDK request, with output capped at min(64, the configured output limit), a 15-second timeout and caller cancellation. It writes no settings, sessions or tasks. A saved key can be reused only for the same API format and endpoint; changing either requires a key. Gateway JSON errors become readable messages, with original and URL-encoded key values redacted.
+
+The form uses native validation, disables editing and saving during a test, and keeps success/error feedback in its footer. Success explicitly remains unsaved until Save settings is selected. Editing clears the result. Cancel test stops only the probe and preserves the dialog and entered values; an older cancelled request cannot overwrite a newer result.
 
 Confirmed: model capabilities are editable context capacity (contextWindow), maximum output (maxTokens), and image-input support (supportsImages). New settings start at 128000 / 16384 tokens with images off; these are editable starting values, not model presets. Both token counts must be positive integers and output cannot exceed context capacity. Context capacity drives pi model configuration and compaction budgets; the output cap enters protocol requests and may be reduced further by the SDK when context space is limited.
 

@@ -9,6 +9,7 @@ import { checkOrigin, errorMessage, HttpError, json, readBytes, readJson, requir
 import { proxyHttp, proxyUpgrade } from './proxy.js';
 import { Workbench } from './workbench.js';
 import { TerminalBridge } from './terminal.js';
+import { probeModel } from './model-probe.js';
 
 export function checkRequest(request: IncomingMessage) {
   const host = request.headers.host;
@@ -36,9 +37,18 @@ export function createApp(workbench: Workbench) {
         if (method === 'GET') return json(response, workbench.settings.public());
         if (method === 'POST') {
           const body = await readJson<ModelSettingsInput>(request);
+          workbench.settings.preview(body);
           workbench.invalidateSessions();
           return json(response, await workbench.settings.update(body));
         }
+      }
+      if (url.pathname === '/api/settings/test' && method === 'POST') {
+        const candidate = workbench.settings.preview(await readJson<ModelSettingsInput>(request));
+        const controller = new AbortController();
+        const cancel = () => { if (!response.writableEnded) controller.abort(); };
+        response.on('close', cancel);
+        try { return json(response, await probeModel(candidate, controller.signal)); }
+        finally { response.off('close', cancel); }
       }
       if (url.pathname === '/api/tasks') {
         if (method === 'GET') return json(response, workbench.store.list());

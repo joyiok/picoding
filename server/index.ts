@@ -3,8 +3,10 @@ import { TaskStore } from './store.js';
 import { SettingsStore } from './settings.js';
 import { Workbench } from './workbench.js';
 import { createApp } from './app.js';
+import { configureNetwork } from './network.js';
 
 if (!['127.0.0.1', 'localhost'].includes(config.host)) throw new Error('第一版是本地单用户工作台，PICODING_HOST 必须为 127.0.0.1 或 localhost');
+const network = configureNetwork();
 const store = new TaskStore(); const settings = new SettingsStore();
 await store.load(); await settings.load();
 const workbench = new Workbench(store, settings);
@@ -17,6 +19,7 @@ async function shutdown() {
   server.close();
   await workbench.shutdown();
   server.closeAllConnections();
+  await network.close();
 }
 process.on('SIGTERM', () => void shutdown());
 process.on('SIGINT', () => void shutdown());

@@ -8,6 +8,7 @@ import { EventHub } from './events.js';
 import { errorMessage, HttpError } from './http.js';
 import type { SettingsStore } from './settings.js';
 import type { TaskStore } from './store.js';
+import { modelError } from './model-error.js';
 
 export class Workbench {
   readonly events = new EventHub();
@@ -100,7 +101,7 @@ export class Workbench {
       if (message) {
         message.text = event.message.content.filter(block => block.type === 'text').map(block => block.text).join('\n');
         message.streaming = false;
-        if (event.message.stopReason === 'error') message.error = event.message.errorMessage || '模型请求失败，请检查设置后重试';
+        if (event.message.stopReason === 'error') message.error = modelError(event.message.errorMessage || '模型请求失败，请检查设置后重试', this.settings.key());
         this.emit(id, { type: 'message', message });
       }
     } else if (event.type === 'tool_execution_start') {
@@ -135,7 +136,7 @@ export class Workbench {
         this.sessions.set(id, session);
       }
       if (task.status === 'running') await session.prompt(text);
-    } catch (error) { task.error = errorMessage(error); }
+    } catch (error) { task.error = modelError(error, this.settings.key()); }
     finally {
       if (task.status === 'running') task.status = 'ready';
       for (const message of task.messages) message.streaming = false;
