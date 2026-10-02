@@ -42,6 +42,21 @@ Git 导入在工作区 Git 基线初始化之前完成，只用于新工作区�
 
 切换浏览器、代码和终端会保留未保存的草稿；切换任务前会提醒。若 pi 或终端修改了正在编辑的文件，工作台会显示版本冲突，保留草稿并让你对比和合并。新建文件不会覆盖已有文件。初次启动失败时，原始任务会保留，重试启动后继续执行。
 
+### Skills 和插件
+
+侧栏「Skills 和插件」直接使用 pi 的原生包管理和资源能力，无需模型凭证或 Docker。填写官方 pi 的 npm、Git 或本地包来源，可安装、启用/停用、更新和移除；没有预装包。移除本地包只移除配置，源文件保留。界面列出可用 Skills、扩展、提示模板和诊断信息。点击 Skill 的「使用」只把 `/skill:名称` 填入输入框，确认内容后自行发送。
+
+修改在下一条消息生效，项目文件和历史保留。任务正在创建、执行或暂停过程中会拒绝包修改和刷新；先停止执行或完成暂停。打开列表只读取清单，原生 CLI 修改后点击「刷新」才会重新读取资源并更新空闲会话。
+
+也可使用已安装的官方 pi CLI，默认采用用户作用域：
+
+```bash
+npm run pi:packages -- list
+npm run pi:packages -- install 'npm:<chosen-package>'
+```
+
+`<chosen-package>` 是占位符，请替换为自行选择的真实包名，也可传入用户选择的本地 pi 包绝对路径。包装命令支持原生 `install/remove/update/list/config`；使用后先停止或暂停执行中的任务，再在界面刷新。
+
 ### 交互终端
 
 「终端 → 交互终端」提供真实 Unix PTY 的持续 Bash 会话。默认只读，点击「接管电脑」并暂停 agent 后才能输入。支持键盘输入，手机也可使用 Ctrl+C、Tab、Enter 按钮；需要辅助阅读时，可勾选默认关闭的「读屏输出」。
@@ -72,6 +87,7 @@ Web 工作台 (React + TypeScript)
 Node.js 控制服务
    ├── pi SDK：模型、会话、工具循环、上下文压缩
    ├── 本机任务历史和模型设置
+   ├── pi 原生 Skills、扩展、提示模板和包管理
    └── 每个任务一个 Docker 环境
         ├── /workspace 持久化项目数据卷
         ├── 文件和 Bash HTTP 工具
@@ -80,7 +96,9 @@ Node.js 控制服务
         └── Xvfb + Openbox + x11vnc + noVNC
 ```
 
-pi 在控制服务中运行，全部操作工具通过内部 HTTP 请求进入任务环境。pi 的宿主机内置读写/执行工具被替换；未加载项目扩展或宿主机的上下文文件。模型 API Key 保存在本机 `.picoding/settings.json`（权限 `0600`），不作为环境变量传入任务容器。
+pi 在本机控制服务中运行。工作台提供的 sandbox、浏览器操作，以及适配的 pi 原生 `read/write/edit/bash` 工具，在 Docker 任务环境执行。用户安装的 pi 扩展代码按原生 SDK 在宿主控制服务中运行，可以注册工具和斜杠命令；请选择可信来源。依赖 pi TUI 部件的扩展没有专门的 Web 部件映射（headless RPC 的 `hasUI=false`），兼容性取决于扩展。模型 API Key 默认保存在本机 `.picoding/settings.json`（权限 `0600`），不挂载或通过环境变量传入任务容器。
+
+资源格式、过滤和持久化由官方 pi 管理，无自定义插件规范或安装器。配置位于 `<PICODING_DATA_DIR>/pi/settings.json`，按 pi 约定发现该目录下的 `skills`、`extensions` 和 `prompts`，也支持显式配置的用户作用域来源。`pi-workspace` 是私有资源解析目录；不会自动加载宿主助手的 `~/.agents/skills` 或任意任务项目的扩展、上下文文件。本地来源按 pi 规则保存，可能显示为规范化相对路径。Skill 目录与辅助文件经标准 tar/Docker 传输复制到 `/workspace/.picoding/pi-skills/<hash>`，供原生工具在任务电脑读取和执行。
 
 容器采用非 root 用户、只读根文件系统、清空 capabilities、禁止提权、进程数和 CPU/内存限额。工作目录是每个任务独立的 Docker volume，没有挂载宿主机目录或 Docker socket。远程桌面经控制服务代理，工作容器 HTTP 接口使用随机凭证，端口只绑定宿主机 loopback。Docker 容器共享宿主机内核，第一版的隔离面向本地单用户；虚拟机级隔离属于后续运行时替换。
 
@@ -142,11 +160,15 @@ npm run test:integration
 
 `verify` 执行全部测试和生产构建；`doctor` 检查 Node、Docker、任务镜像及模型代理配置。`test:integration` 先构建，再启动真正的 `node dist/server/index.js`，用临时数据目录、虚构凭证和本地确定性 HTTP SSE 模型服务，驱动真实 Docker、Chromium 和 PTY；无需用户模型凭证。
 
-本轮干净 `npm ci` 安装成功，依赖审计 0 个漏洞，`npm run sandbox:build` 成功构建镜像；最终 **41/41 测试及生产构建通过**。在 Node 22.22.1 的 Linux/WSL + Docker 环境，生产集成验收通过：HTML/JS/CSS、pi 写文件/执行命令/浏览器导航与点击的四工具循环、实时 SSE、noVNC、终端接管/归还及项目导出均有效。宿主模型密钥不进入任务环境，导出排除 `.git`、`.picoding` 和 `node_modules`。
+本轮 `npm run verify` 完成 **48/48 测试和生产构建**。新增资源测试使用真实官方 SDK 和明确的合成本地原生包，验证安装/过滤/持久化/移除、Skill 展开和动态资源、扩展工具循环/命令、提示模板、远程原生工具、复制取消及忙碌限制；模型回复脚本化离线提供。
+
+真实编译生产服务、HTTP API 和 Playwright 验证了桌面/手机安装、启用/停用、Skill 输入框插入、错误保留输入、移除和 Escape，`pageErrors=[]`，无横向溢出。真实 Docker 中的原生 read/bash 执行了复制的 Python 辅助文件，写出 `NATIVE_HELPER_OK`。新资源界面的独立五部分复核返回 **ship**，仅限新弹窗、侧栏和输入框资源集成；测试数据标为「模拟数据」。临时服务、数据、容器和卷已清理，用户资源/任务仍为空，模型未配置；`pi:packages -- list` 通过。
+
+以下生产与恢复验收是上一轮历史证据，本轮未重跑完整 `test:integration`：干净 `npm ci` 安装成功，依赖审计 0 个漏洞，`npm run sandbox:build` 成功构建镜像；当时 **41/41 测试及生产构建通过**。在 Node 22.22.1 的 Linux/WSL + Docker 环境，生产集成验收通过：HTML/JS/CSS、pi 写文件/执行命令/浏览器导航与点击的四工具循环、实时 SSE、noVNC、终端接管/归还及项目导出均有效。宿主模型密钥不进入任务环境，导出排除 `.git`、`.picoding` 和 `node_modules`。
 
 恢复验收覆盖端口占用时不影响已有任务、正常重启后文件/工具历史/pi 会话与 Chromium localStorage 保留、401 错误脱敏后重试成功、挂起请求取消后继续，以及宿主进程被 SIGKILL 后仅清理中断任务的自有容器并保留项目卷。临时任务、容器、卷和私有测试数据已清理，用户设置和数据未改变。
 
-模型设置 UI 的独立评审仍限定于唯一「取消测试保留表单」修正，结论为已解决并 **ship**；本轮后端验收未扩展该设计评审范围。实际用户模型仍未配置，模型请求使用本地协议测试服务，外部真实模型服务尚未联调；其他操作系统的安装流程尚未实测。
+模型设置的旧评审仍限定于唯一「取消测试保留表单」修正。原生资源轮没有实测联网 npm/Git 安装或外部真实模型服务；其他操作系统的安装流程也尚未实测。
 
 ## 后续范围
 

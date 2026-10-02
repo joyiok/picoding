@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
 import type { ChatMessage, GitProjectSource, Task, TaskEvent, TerminalEntry } from '../shared/types.js';
 import { createPiSession } from './agent.js';
@@ -9,6 +10,8 @@ import { errorMessage, HttpError } from './http.js';
 import type { SettingsStore } from './settings.js';
 import type { TaskStore } from './store.js';
 import { modelError } from './model-error.js';
+import { PiResources } from './resources.js';
+import type { PiPackageAction } from '../shared/resources.js';
 
 export class Workbench {
   readonly events = new EventHub();
@@ -19,13 +22,34 @@ export class Workbench {
   private assistantIds = new Map<string, string>();
   private manualCommands = new Map<string, AbortController>();
   private startingAbort = new Map<string, AbortController>();
+  private sendAbort = new Map<string, AbortController>();
+  private preparing = new Map<string, Promise<AgentSession>>();
+  private resourceChange?: Promise<unknown>;
   private closing = false;
   private restoring = false;
-  constructor(readonly store: TaskStore, readonly settings: SettingsStore, private readonly makeSandbox: (id: string) => Sandbox & { start(signal?: AbortSignal): Promise<void> } = id => new DockerSandbox(id)) {}
+  constructor(readonly store: TaskStore, readonly settings: SettingsStore, private readonly makeSandbox: (id: string) => Sandbox & { start(signal?: AbortSignal): Promise<void> } = id => new DockerSandbox(id), readonly resources = new PiResources(settings.directory)) {}
 
   private available() {
     if (this.closing) throw new HttpError(503, '工作台正在关闭，请重启后继续');
     if (this.restoring) throw new HttpError(503, '工作台正在恢复任务环境，请稍后重试');
+    if (this.resourceChange) throw new HttpError(409, 'pi 包正在更新，请完成后继续任务');
+  }
+
+  async changeResources(action: PiPackageAction, source: unknown) {
+    this.available();
+    if (this.store.list().some(task => ['creating', 'running', 'pausing'].includes(task.status))) throw new HttpError(409, '请先停止正在执行的任务，再修改 Skills 和插件');
+    const change = this.resources.change(action, source);
+    this.resourceChange = change;
+    try { const catalog = await change; this.invalidateSessions(); return catalog; }
+    finally { this.resourceChange = undefined; }
+  }
+
+  async reloadResources() {
+    this.available();
+    if (this.store.list().some(task => ['creating', 'running', 'pausing'].includes(task.status))) throw new HttpError(409, '请先停止正在执行的任务，再刷新 Skills 和插件');
+    const operation = this.resources.catalog(); this.resourceChange = operation;
+    try { const catalog = await operation; this.invalidateSessions(); return catalog; }
+    finally { this.resourceChange = undefined; }
   }
 
   async restoreInterruptedSandboxes() {
@@ -103,6 +127,7 @@ export class Workbench {
     if (event.type === 'terminal') {
       task.terminal.push(event.entry); if (task.terminal.length > 100) task.terminal.shift();
     } else if (event.type === 'browser') task.browserUrl = event.state.url;
+    else if (event.type === 'message' && !task.messages.some(message => message.id === event.message.id)) task.messages.push(event.message);
     this.events.publish(id, event); this.schedule(task);
   }
 
@@ -131,6 +156,9 @@ export class Workbench {
         if (event.message.stopReason === 'error') message.error = modelError(event.message.errorMessage || '模型请求失败，请检查设置后重试', this.settings.key());
         this.emit(id, { type: 'message', message });
       }
+    } else if (event.type === 'message_end' && event.message.role === 'custom' && event.message.display) {
+      const text = typeof event.message.content === 'string' ? event.message.content : event.message.content.filter(block => block.type === 'text').map(block => block.text).join('\n');
+      this.emit(id, { type: 'message', message: { id: randomUUID(), role: 'assistant', text, createdAt: new Date().toISOString() } });
     } else if (event.type === 'tool_execution_start') {
       const tool = { id: event.toolCallId, name: event.toolName, args: event.args as Record<string, unknown>, status: 'running' as const, createdAt: new Date().toISOString() };
       task.tools.push(tool); this.emit(id, { type: 'tool', tool });
@@ -156,15 +184,21 @@ export class Workbench {
       task.messages.push(message); this.emit(id, { type: 'message', message });
     }
     this.changed(task);
+    const controller = new AbortController(); this.sendAbort.set(id, controller);
     try {
       let session = this.sessions.get(id);
       if (!session) {
-        session = await createPiSession(id, sandbox, this.settings, event => this.emit(id, event), event => this.onPiEvent(id, event));
+        const preparation = createPiSession(id, sandbox, this.settings, event => this.emit(id, event), event => this.onPiEvent(id, event), join(this.settings.directory, 'sessions', id), this.resources, controller.signal);
+        this.preparing.set(id, preparation);
+        try { session = await preparation; }
+        finally { if (this.preparing.get(id) === preparation) this.preparing.delete(id); }
+        if (controller.signal.aborted) { session.dispose(); controller.signal.throwIfAborted(); }
         this.sessions.set(id, session);
       }
       if (task.status === 'running') await session.prompt(text);
-    } catch (error) { task.error = modelError(error, this.settings.key()); }
+    } catch (error) { if (!controller.signal.aborted) task.error = modelError(error, this.settings.key()); }
     finally {
+      if (this.sendAbort.get(id) === controller) this.sendAbort.delete(id);
       if (task.status === 'running') task.status = 'ready';
       for (const message of task.messages) message.streaming = false;
       this.changed(task); await this.store.save(task);
@@ -179,7 +213,8 @@ export class Workbench {
     const session = this.sessions.get(id);
     session?.clearQueue();
     this.manualCommands.get(id)?.abort();
-    try { await Promise.all([session?.abort(), sandbox.request('/cancel', {})]); }
+    this.sendAbort.get(id)?.abort();
+    try { await Promise.all([session?.abort(), sandbox.request('/cancel', {}), this.preparing.get(id)?.catch(() => {})]); }
     catch (error) {
       task.status = 'error'; task.error = `停止当前操作失败：${errorMessage(error)}`; this.changed(task); await this.store.save(task); throw error;
     }
@@ -209,6 +244,8 @@ export class Workbench {
   }
 
   async stop(id: string) {
+    this.sendAbort.get(id)?.abort();
+    await this.preparing.get(id)?.catch(() => {});
     this.startingAbort.get(id)?.abort();
     await this.starting.get(id);
     const task = this.store.get(id);
@@ -252,8 +289,11 @@ export class Workbench {
 
   async shutdown() {
     this.closing = true;
+    for (const controller of this.sendAbort.values()) controller.abort();
+    await this.resourceChange?.catch(() => {});
     for (const controller of this.startingAbort.values()) controller.abort();
     for (const controller of this.manualCommands.values()) controller.abort();
+    await Promise.allSettled([...this.preparing.values()]);
     await Promise.all([...this.starting.values()]);
     for (const session of this.sessions.values()) { session.clearQueue(); await session.abort(); session.dispose(); }
     await Promise.all([...this.sandboxes.values()].map(sandbox => sandbox.stop()));

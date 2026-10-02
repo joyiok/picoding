@@ -17,7 +17,8 @@
     "verify": "npm test && npm run build",
     "test:integration": "npm run build && node --import tsx scripts/verify-sandbox.ts",
     "sandbox:build": "node --import tsx scripts/build-sandbox.ts",
-    "doctor": "node --import tsx scripts/doctor.ts"
+    "doctor": "node --import tsx scripts/doctor.ts",
+    "pi:packages": "node --import tsx scripts/pi-packages.ts"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "1.0.0",

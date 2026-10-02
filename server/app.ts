@@ -10,6 +10,7 @@ import { proxyHttp, proxyUpgrade } from './proxy.js';
 import { Workbench } from './workbench.js';
 import { TerminalBridge } from './terminal.js';
 import { probeModel } from './model-probe.js';
+import type { PiPackageAction } from '../shared/resources.js';
 
 export function checkRequest(request: IncomingMessage) {
   const host = request.headers.host;
@@ -49,6 +50,12 @@ export function createApp(workbench: Workbench) {
         response.on('close', cancel);
         try { return json(response, await probeModel(candidate, controller.signal)); }
         finally { response.off('close', cancel); }
+      }
+      if (url.pathname === '/api/resources' && method === 'GET') return json(response, await workbench.resources.catalog());
+      if (url.pathname === '/api/resources/reload' && method === 'POST') return json(response, await workbench.reloadResources());
+      if (url.pathname === '/api/resources/packages' && method === 'POST') {
+        const body = await readJson<{ action: PiPackageAction; source: unknown }>(request);
+        return json(response, await workbench.changeResources(body.action, body.source));
       }
       if (url.pathname === '/api/tasks') {
         if (method === 'GET') return json(response, workbench.store.list());

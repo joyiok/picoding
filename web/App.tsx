@@ -6,6 +6,7 @@ import { Computer } from './Computer';
 import { Icon, PiMark } from './Icon';
 import { Settings } from './Settings';
 import { Project } from './Project';
+import { Resources } from './Resources';
 
 const statuses: Record<string, string> = { creating: '正在准备', ready: '环境就绪', running: '正在执行', pausing: '正在暂停', paused: '你已接管', error: '启动失败', stopped: '环境已停止' };
 
@@ -16,6 +17,7 @@ export function App() {
   const [settings, setSettings] = useState<PublicSettings>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
+  const [resourcesOpen, setResourcesOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 1000px)').matches);
   const [editorDirty, setEditorDirty] = useState(false);
@@ -141,7 +143,7 @@ export function App() {
       <button className="new-task" onClick={() => newTask()}><Icon name="plus" size={17} />新任务<span className="new-task-key">开始</span></button>
       <div className="task-list-heading">最近任务<span>{tasks.length > 0 ? tasks.length : ''}</span></div>
       <nav className="task-list">{loading ? <div className="task-skeleton"><i /><i /><i /></div> : tasks.length ? tasks.map(item => <button key={item.id} className={`task-nav-item ${item.id === activeId ? 'active' : ''}`} aria-current={item.id === activeId ? 'page' : undefined} onClick={() => { if (item.id === activeId) { setSidebarOpen(false); return; } if (!allowNavigation()) return; setEditorDirty(false); setActiveId(item.id); setSidebarOpen(false); setDraft(''); setError(''); }}><Icon name="chat" size={15} /><span>{item.title}</span><span className={`task-indicator ${item.status}`} title={statuses[item.status]} /></button>) : <div className="task-list-empty"><Icon name="clock" size={17} /><p>你的任务会保存在这里。</p><span>从第一件想做的事开始。</span></div>}</nav>
-      <div className="sidebar-bottom"><button className="settings-nav" onClick={() => { setSidebarOpen(false); setSettingsOpen(true); }}><Icon name="settings" size={17} />模型设置<Icon name="chevron" size={14} /></button><div className="local-profile"><span className="profile-avatar">我</span><div><strong>本地工作台</strong><small><span className={`status-dot ${connected ? 'online' : ''}`} />{connected ? '仅在你的电脑上运行' : '正在重新连接…'}</small></div></div></div>
+      <div className="sidebar-bottom"><button className="settings-nav" onClick={() => { setSidebarOpen(false); setResourcesOpen(true); }}><Icon name="folder" size={17} />Skills 和插件<Icon name="chevron" size={14} /></button><button className="settings-nav" onClick={() => { setSidebarOpen(false); setSettingsOpen(true); }}><Icon name="settings" size={17} />模型设置<Icon name="chevron" size={14} /></button><div className="local-profile"><span className="profile-avatar">我</span><div><strong>本地工作台</strong><small><span className={`status-dot ${connected ? 'online' : ''}`} />{connected ? '仅在你的电脑上运行' : '正在重新连接…'}</small></div></div></div>
     </aside>
     <main className="main-workspace" inert={mobile && sidebarOpen}>
       <header className="workspace-header"><div className="header-title"><button className="icon-button mobile-only" aria-label="打开任务列表" aria-expanded={sidebarOpen} aria-controls="task-navigation" onClick={() => setSidebarOpen(true)}><Icon name="menu" /></button><span>{task?.title || '新的开始'}</span>{task && <span className={`task-status ${task.status}`}><span className="status-dot" />{statuses[task.status]}</span>}</div><div className="header-actions"><button className="model-button" onClick={() => setSettingsOpen(true)}><span className={`status-dot ${settings?.configured ? 'online' : ''}`} /><span>{settings?.configured ? settings.model || (settings.protocol === 'anthropic' ? 'Anthropic 格式' : 'OpenAI 格式') : '连接模型'}</span><Icon name="down" size={13} /></button>{task && <><button className="icon-button" aria-label="下载项目" title="下载项目" disabled={!['ready', 'paused', 'running'].includes(task.status)} onClick={() => { window.location.href = `/api${taskPath(task.id, 'archive')}`; }}><Icon name="download" /></button><button className="icon-button" aria-label="删除任务" title="删除任务" disabled={busy || ['creating', 'running', 'pausing'].includes(task.status)} onClick={() => void remove()}><Icon name="trash" size={17} /></button></>}</div></header>
@@ -164,5 +166,6 @@ export function App() {
     </main>
     {settingsOpen && <Settings initial={settings} onClose={() => setSettingsOpen(false)} onSaved={value => { setSettings(value); void refresh(); }} />}
     {projectOpen && <Project onClose={() => setProjectOpen(false)} onCreated={created => { setTasks(tasks => [created, ...tasks]); setActiveId(created.id); setError(''); setMobilePanel('computer'); }} />}
+    {resourcesOpen && <Resources onClose={() => setResourcesOpen(false)} onUse={command => { setDraft(command); setMobilePanel('chat'); requestAnimationFrame(() => composer.current?.focus()); }} />}
   </div>;
 }

@@ -15,6 +15,7 @@ import { Workbench } from '../server/workbench.js';
 import { WorkspaceFiles } from '../sandbox/files.js';
 import type { FileWriteOptions, Task } from '../shared/types.js';
 import { maxUploadBytes } from '../shared/types.js';
+import { resourcePackage } from './resource-package.js';
 
 type Reply = { status: number; body: Record<string, unknown> };
 // Exercise the real HTTP router without listening on a socket in this restricted workspace.
@@ -62,6 +63,35 @@ test('HTTP router rejects foreign origins and DNS rebinding hosts', async t => {
   assert.equal((await request(state.server, '/tasks', 'GET', undefined, { host: `evil.invalid:${config.port}` })).status, 403);
   assert.equal((await request(state.server, '/tasks', 'GET', undefined, { origin: 'https://evil.invalid' })).status, 403);
   assert.equal((await request(state.server, '/tasks', 'GET', undefined, { 'sec-fetch-site': 'cross-site' })).status, 403);
+});
+
+test('HTTP Pi package routes use native settings, retain model keys and support filtering and reload', async t => {
+  const state = await setup(); t.after(() => state.close());
+  await state.settings.update({ protocol: 'openai', model: 'unchanged', baseUrl: 'https://fixture.invalid/v1', apiKey: 'private-model-key' });
+  const source = await resourcePackage(state.directory);
+  assert.equal((await request(state.server, '/resources')).status, 200);
+  const installed = await request(state.server, '/resources/packages', 'POST', { action: 'install', source });
+  assert.equal(installed.status, 200); assert.equal((installed.body.skills as unknown[]).length, 1);
+  const configuredSource = (installed.body.packages as { source: string }[])[0].source;
+  const disabled = await request(state.server, '/resources/packages', 'POST', { action: 'disable', source: configuredSource });
+  assert.equal(disabled.status, 200); assert.deepEqual(disabled.body.skills, []);
+  assert.equal((await request(state.server, '/resources/packages', 'POST', { action: 'enable', source: configuredSource })).status, 200);
+  assert.equal((await request(state.server, '/resources/reload', 'POST', {})).status, 200);
+  assert.equal((await request(state.server, '/resources/packages', 'POST', { action: 'update', source: configuredSource })).status, 200);
+  assert.equal(state.settings.key(), 'private-model-key'); assert.equal(JSON.stringify(installed.body).includes('private-model-key'), false);
+  assert.equal((await request(state.server, '/resources/packages', 'POST', { action: 'remove', source: configuredSource })).status, 200);
+  assert.deepEqual((await request(state.server, '/resources')).body.packages, []);
+});
+
+test('HTTP Pi package management rejects invalid actions and changes while an agent is running', async t => {
+  const state = await setup(); t.after(() => state.close());
+  assert.equal((await request(state.server, '/resources/packages', 'POST', { action: 'invalid', source: 'npm:fake' })).status, 400);
+  assert.equal((await request(state.server, '/resources/packages', 'POST', { action: 'install', source: '-flag' })).status, 400);
+  const now = new Date().toISOString();
+  await state.store.save({ id: randomUUID(), title: 'busy', status: 'running', createdAt: now, updatedAt: now, messages: [], tools: [], terminal: [] });
+  assert.equal((await request(state.server, '/resources/packages', 'POST', { action: 'install', source: '/missing-fixture' })).status, 409);
+  assert.equal((await request(state.server, '/resources/reload', 'POST', {})).status, 409);
+  assert.deepEqual((await request(state.server, '/resources')).body.packages, []);
 });
 
 test('HTTP model capacities reject invalid values without replacing the saved configuration', async t => {

@@ -1,5 +1,6 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { pipeline } from 'node:stream/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { BrowserAction, BrowserState, CommandResult, FileContent, FileEntry, FileWriteOptions } from '../shared/types.js';
 import { config } from './config.js';
@@ -42,6 +43,7 @@ export interface Sandbox {
   destroy(): Promise<void>;
   readonly url: string;
   readonly token: string;
+  copyResources?(source: string, destination: string, signal?: AbortSignal): Promise<void>;
 }
 
 export class DockerSandbox implements Sandbox {
@@ -99,6 +101,25 @@ export class DockerSandbox implements Sandbox {
       throw new HttpError(response.status, data.error || '沙盒请求失败');
     }
     return response.json() as Promise<T>;
+  }
+
+  async copyResources(source: string, destination: string, signal?: AbortSignal) {
+    if (!/^\/workspace\/\.picoding\/pi-skills\/[a-f\d]{24}$/.test(destination)) throw new Error('无效的 skill 资源目录');
+    signal?.throwIfAborted();
+    const prepared = await sandboxApi.command(this, `mkdir -p -- '${destination}'`, signal);
+    if (prepared.exitCode !== 0) throw new Error(prepared.output || '无法准备 skill 资源目录');
+    // Use standard tar and Docker transport, with extraction as the existing non-root user.
+    // Only the selected skill directory is transferred; host settings/auth are never mounted.
+    const controller = new AbortController();
+    const combined = AbortSignal.any([controller.signal, ...(signal ? [signal] : [])]);
+    const pack = spawn('tar', ['--exclude=.git', '-cf', '-', '-C', source, '.'], { stdio: ['ignore', 'pipe', 'pipe'], signal: combined });
+    const unpack = spawn('docker', ['exec', '-i', this.name, 'tar', '--no-same-owner', '-xf', '-', '-C', destination], { stdio: ['pipe', 'ignore', 'pipe'], signal: combined });
+    let failure = '';
+    for (const stream of [pack.stderr, unpack.stderr]) stream.on('data', data => { failure = (failure + data.toString()).slice(-2000); });
+    const exited = (child: ChildProcess) => new Promise<void>((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error(failure || 'skill 资源传输失败'))); });
+    const timer = setTimeout(() => controller.abort(), 60_000);
+    try { await Promise.all([exited(pack), exited(unpack), pipeline(pack.stdout, unpack.stdin)]); }
+    finally { clearTimeout(timer); controller.abort(); }
   }
 
   async stop() {
