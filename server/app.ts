@@ -8,6 +8,7 @@ import { dockerHealth, sandboxApi } from './docker.js';
 import { checkOrigin, errorMessage, HttpError, json, readBytes, readJson, requireString } from './http.js';
 import { proxyHttp, proxyUpgrade } from './proxy.js';
 import { Workbench } from './workbench.js';
+import { TerminalBridge } from './terminal.js';
 
 export function checkRequest(request: IncomingMessage) {
   const host = request.headers.host;
@@ -18,6 +19,7 @@ export function checkRequest(request: IncomingMessage) {
 const contentTypes: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.ico': 'image/x-icon' };
 
 export function createApp(workbench: Workbench) {
+  const terminals = new TerminalBridge(workbench);
   const webRoot = resolve('dist/web');
   const server = createServer(async (request, response) => {
     response.setHeader('X-Content-Type-Options', 'nosniff');
@@ -120,11 +122,13 @@ export function createApp(workbench: Workbench) {
     try {
       checkRequest(request);
       const url = new URL(request.url || '/', 'http://local');
-      const match = /^\/api\/tasks\/([a-f\d-]{36})\/desktop\/websockify$/.exec(url.pathname);
+      const match = /^\/api\/tasks\/([a-f\d-]{36})\/(desktop\/websockify|terminal)$/.exec(url.pathname);
       if (!match) throw new HttpError(404, '接口不存在');
+      if (match[2] === 'terminal') { terminals.upgrade(request, socket, head, match[1]); return; }
       const sandbox = workbench.sandbox(match[1]);
       proxyUpgrade(request, socket, head, sandbox.url, '/desktop/websockify', sandbox.token);
     } catch { socket.end('HTTP/1.1 403 Forbidden\r\n\r\n'); }
   });
+  server.on('close', () => terminals.close());
   return server;
 }

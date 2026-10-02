@@ -162,7 +162,8 @@ export class Workbench {
 
   async release(id: string) {
     const task = this.store.get(id);
-    if (task.status !== 'paused') throw new HttpError(409, '浏览器当前未被接管');
+    if (task.status !== 'paused') throw new HttpError(409, '任务电脑当前未被接管');
+    await this.sandbox(id).request('/terminal/release', {});
     // Synchronize the tab selected manually in Chromium before pi can act again.
     this.emit(id, { type: 'browser', state: await sandboxApi.browser(this.sandbox(id)) });
     task.status = 'ready'; this.changed(task); await this.store.save(task);
@@ -209,7 +210,7 @@ export class Workbench {
 
   validateSend(id: string) {
     const task = this.store.get(id);
-    if (task.status !== 'ready') throw new HttpError(409, task.status === 'paused' ? '请先归还浏览器，再继续任务' : '请等待当前操作完成或先启动环境');
+    if (task.status !== 'ready') throw new HttpError(409, task.status === 'paused' ? '请先归还电脑，再继续任务' : '请等待当前操作完成或先启动环境');
     if (this.manualCommands.has(id)) throw new HttpError(409, '请等待终端命令完成，再发送任务');
     if (!this.settings.public().configured) throw new HttpError(409, '请先在模型设置中填写 API 格式、地址、模型 ID 和密钥');
   }

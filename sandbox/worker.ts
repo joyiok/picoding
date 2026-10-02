@@ -9,12 +9,14 @@ import { WorkspaceFiles } from './files.js';
 import { executeCommand } from './commands.js';
 import { TaskBrowser } from './browser.js';
 import { importRepository } from './import.js';
+import { TerminalSockets } from './terminal-sockets.js';
 
 const token = process.env.WORKER_TOKEN;
 if (!token) throw new Error('WORKER_TOKEN is required. Run this worker inside a PiCoding task container.');
 const root = resolve('/workspace');
 const files = new WorkspaceFiles(root);
 const browser = new TaskBrowser();
+const terminal = new TerminalSockets(root);
 await mkdir(root, { recursive: true });
 await browser.start();
 const activeCommands = new Set<AbortController>();
@@ -28,6 +30,7 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (request.method === 'GET' && url.pathname === '/health') return json(response, { ok: true });
+    if (request.method === 'POST' && url.pathname === '/terminal/release') { await terminal.suspend(); return json(response, { ok: true }); }
     if (request.method === 'GET' && url.pathname === '/files') return json(response, await files.list(url.searchParams.get('path') || ''));
     if (request.method === 'GET' && url.pathname === '/file') return json(response, await files.read(requireString(url.searchParams.get('path'), '文件路径', 2048)));
     if (request.method === 'POST' && url.pathname === '/file') {
@@ -88,12 +91,14 @@ const server = createServer(async (request, response) => {
 server.on('upgrade', (request, socket, head) => {
   if (request.headers.authorization !== `Bearer ${token}`) { socket.end('HTTP/1.1 401 Unauthorized\r\n\r\n'); return; }
   const url = new URL(request.url || '/', 'http://worker');
+  if (url.pathname === '/terminal') { terminal.upgrade(request, socket, head); return; }
   if (url.pathname !== '/desktop/websockify') { socket.destroy(); return; }
   proxyUpgrade(request, socket, head, 'http://127.0.0.1:6080', '/websockify');
 });
 server.listen(4311, '0.0.0.0', () => console.log('Sandbox worker ready on 4311'));
 async function shutdown() {
   for (const command of activeCommands) command.abort();
+  await terminal.close();
   await browser.close(); server.close();
 }
 process.on('SIGTERM', () => void shutdown());

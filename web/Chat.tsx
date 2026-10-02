@@ -9,7 +9,7 @@ const emptyTaskCopy: Record<TaskStatus, { heading: string; text: string }> = {
   ready: { heading: '任务电脑准备好了。', text: '描述接下来要做的事，让 pi 从这里开始。' },
   running: { heading: 'pi 正在工作…', text: '执行过程会显示在这里，你可以随时停止。' },
   pausing: { heading: '正在暂停当前操作…', text: '等待操作停止后，就可以继续使用任务电脑。' },
-  paused: { heading: '任务电脑交给你了。', text: '你可以操作浏览器或编辑代码。归还浏览器后，再让 pi 继续任务。' },
+  paused: { heading: '任务电脑交给你了。', text: '你可以操作浏览器、终端或编辑代码。归还电脑后，再让 pi 继续任务。' },
   stopped: { heading: '任务电脑已停止。', text: '项目文件仍然保留。点击「启动环境」，继续这个项目。' },
   error: { heading: '任务环境还未就绪。', text: '查看下方的错误提示后重试，或新建任务重新导入项目。' },
 };
@@ -49,6 +49,6 @@ export function Chat({ task, suggest, openProject }: { task?: Task; suggest: (va
       <pre>{event.item.output || (event.item.status === 'running' ? '正在执行…' : JSON.stringify(event.item.args, null, 2))}</pre>
     </details>)}</div>}
     {task?.status === 'running' && <div className="agent-working"><span className="stream-dot" />pi 正在处理任务<span className="working-caption">执行过程会显示在这里</span></div>}
-    {task?.status === 'paused' && <div className="handoff-note"><Icon name="hand" size={16} /><div>浏览器交给你了。<small>完成操作后，点击「归还浏览器」继续。</small></div></div>}
+    {task?.status === 'paused' && <div className="handoff-note"><Icon name="hand" size={16} /><div>任务电脑交给你了。<small>完成操作后，在浏览器或终端工具栏点击归还。</small></div></div>}
   </div>;
 }

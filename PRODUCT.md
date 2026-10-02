@@ -26,6 +26,12 @@ Confirmed: file and folder uploads preserve binary bytes and relative subdirecto
 
 Task networking can inherit backend HTTPS_PROXY/HTTP_PROXY or use PICODING_SANDBOX_PROXY; none disables the task proxy. A separate authenticated relay connects a loopback proxy while task containers stay on the Docker bridge. Container-local development URLs bypass the proxy.
 
+Confirmed: each running task exposes one real Unix PTY with a persistent Bash shell. Working directory and environment state survive terminal/browser view switches and webpage reconnects while that task environment is running. Recent output replays up to 256 KiB. Multiple webpages for the same task share the shell, with dimensions following the active window. Stopping the environment ends the PTY; the project volume and Bash history remain, and restart creates a new shell.
+
+The interactive terminal is read-only by default. Taking over the computer pauses the agent before input is enabled; the host requires paused state for every WebSocket input message. Returning control interrupts the foreground program and waits for a Bash prompt while nohup background services keep running. Agent commands and the existing independent command form remain in execution history rather than the interactive PTY.
+
+Terminal UI offers Ctrl+C, Tab and Enter controls and an optional screen-reader output mode, off by default. The xterm view loads lazily and fits its container. WebSocket message limits, bounded queues, ACK backpressure and heartbeat cleanup govern the terminal stream.
+
 Confirmed: model configuration selects the OpenAI or Anthropic API format. The user provides the API endpoint, model ID and key. Both protocols accept custom gateways; no preconfigured service or model catalogue is offered.
 
 Confirmed: model capabilities are editable context capacity (contextWindow), maximum output (maxTokens), and image-input support (supportsImages). New settings start at 128000 / 16384 tokens with images off; these are editable starting values, not model presets. Both token counts must be positive integers and output cannot exceed context capacity. Context capacity drives pi model configuration and compaction budgets; the output cap enters protocol requests and may be reduced further by the SDK when context space is limited.

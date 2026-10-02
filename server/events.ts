@@ -2,11 +2,13 @@ import type { ServerResponse } from 'node:http';
 import type { EventEnvelope, TaskEvent } from '../shared/types.js';
 
 export class EventHub {
+  private listeners = new Map<string, Set<(event: TaskEvent) => void>>();
   private subscribers = new Map<string, Set<ServerResponse>>();
   private history = new Map<string, EventEnvelope[]>();
   private sequence = 0;
 
   publish(taskId: string, event: TaskEvent) {
+    for (const listener of this.listeners.get(taskId) || []) listener(event);
     const item = { sequence: ++this.sequence, event };
     const entries = this.history.get(taskId) || [];
     entries.push(item);
@@ -15,6 +17,12 @@ export class EventHub {
     for (const subscriber of this.subscribers.get(taskId) || []) {
       if (!subscriber.destroyed) subscriber.write(this.frame(item));
     }
+  }
+
+  listen(taskId: string, listener: (event: TaskEvent) => void) {
+    const group = this.listeners.get(taskId) || new Set();
+    group.add(listener); this.listeners.set(taskId, group);
+    return () => { group.delete(listener); if (!group.size) this.listeners.delete(taskId); };
   }
 
   subscribe(taskId: string, response: ServerResponse, snapshot: TaskEvent) {
@@ -35,5 +43,6 @@ export class EventHub {
   close() {
     for (const group of this.subscribers.values()) for (const response of group) response.end();
     this.subscribers.clear();
+    this.listeners.clear();
   }
 }

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { maxUploadBytes, type BrowserState, type CommandResult, type FileContent, type FileEntry, type Task } from '../shared/types';
 import { api, ApiError, message, taskPath, uploadFile } from './api';
 import { Icon } from './Icon';
+const InteractiveTerminal = lazy(() => import('./Terminal'));
 
 type Tab = 'browser' | 'code' | 'terminal';
 interface Props { task?: Task; revision: number; act: (action: string) => Promise<void>; report: (value: string) => void; onDirtyChange: (dirty: boolean) => void; }
@@ -51,7 +52,7 @@ export function Computer({ task, revision, act, report, onDirtyChange }: Props) 
       </div>
     </div>
     <div className="computer-content" id="panel-code" role="tabpanel" aria-labelledby="tab-code" hidden={tab !== 'code'}><Files key={task?.id || 'empty'} task={task} live={Boolean(live)} revision={revision} report={report} onDirtyChange={onDirtyChange} /></div>
-    <div className="computer-content" id="panel-terminal" role="tabpanel" aria-labelledby="tab-terminal" hidden={tab !== 'terminal'}><Terminal key={task?.id || 'empty'} task={task} live={Boolean(live)} report={report} /></div>
+    <div className="computer-content" id="panel-terminal" role="tabpanel" aria-labelledby="tab-terminal" hidden={tab !== 'terminal'}><Suspense fallback={<div className="editor-loading">正在准备终端…</div>}><InteractiveTerminal key={task?.id || 'empty'} task={task} live={Boolean(live)} active={tab === 'terminal'} act={act} empty={<ComputerEmpty tab="terminal" task={task} />} history={<Terminal task={task} live={Boolean(live)} report={report} />} /></Suspense></div>
     <div className="computer-footer"><span><Icon name="folder" size={13} /> /workspace</span><span>独立环境<span className="footer-separator" />Linux</span></div>
   </section>;
 }
