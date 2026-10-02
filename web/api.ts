@@ -13,3 +13,11 @@ export async function api<T>(path: string, body?: unknown, method?: string): Pro
 
 export const taskPath = (id: string, action: string) => `/tasks/${id}/${action}`;
 export function message(error: unknown) { return error instanceof Error ? error.message : String(error); }
+
+export async function uploadFile(id: string, path: string, file: File, signal?: AbortSignal): Promise<void> {
+  const response = await fetch('/api/tasks/' + id + '/upload?path=' + encodeURIComponent(path), {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file, signal,
+  });
+  const data = await response.json();
+  if (!response.ok) throw new ApiError(data.error || '文件上传失败', response.status);
+}

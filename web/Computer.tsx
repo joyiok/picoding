@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { BrowserState, CommandResult, FileContent, FileEntry, Task } from '../shared/types';
-import { api, ApiError, message, taskPath } from './api';
+import { maxUploadBytes, type BrowserState, type CommandResult, type FileContent, type FileEntry, type Task } from '../shared/types';
+import { api, ApiError, message, taskPath, uploadFile } from './api';
 import { Icon } from './Icon';
 
 type Tab = 'browser' | 'code' | 'terminal';
@@ -14,7 +14,7 @@ export function Computer({ task, revision, act, report, onDirtyChange }: Props) 
   const lastUrl = useRef('');
   const live = task && ['ready', 'running', 'paused', 'pausing'].includes(task.status);
   const takeover = task?.status === 'paused';
-  useEffect(() => { setBrowser(undefined); setAddress(''); lastUrl.current = ''; }, [task?.id]);
+  useEffect(() => { setBrowser(undefined); setAddress(''); lastUrl.current = ''; if (task && !task.messages.length) setTab('code'); }, [task?.id]);
   useEffect(() => {
     if (!task || !live) return;
     let cancelled = false;
@@ -77,10 +77,42 @@ function Files({ task, live, revision, report, onDirtyChange }: { task?: Task; l
   const [changedOnDisk, setChangedOnDisk] = useState(false);
   const [diskFile, setDiskFile] = useState<FileContent>();
   const [comparing, setComparing] = useState(false);
+  const [uploadMenu, setUploadMenu] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState('');
+  const fileInput = useRef<HTMLInputElement>(null);
+  const directoryInput = useRef<HTMLInputElement>(null);
+  const uploadController = useRef<AbortController>(undefined);
   const dirty = Boolean(file && content !== file.content);
   const current = useRef({ file, content, dirty });
   current.current = { file, content, dirty };
   const editable = task && ['ready', 'paused'].includes(task.status);
+  useEffect(() => () => uploadController.current?.abort(), []);
+  async function upload(input: FileList | null, folder: boolean) {
+    setUploadMenu(false); if (!task || !input?.length) return;
+    if (input.length > 1000) { report('一次最多上传 1000 个文件，请分批选择，并排除依赖目录。'); return; }
+    const controller = new AbortController(); uploadController.current = controller;
+    const entries = [...input].map(file => ({ file, path: folder ? file.webkitRelativePath.split('/').slice(1).join('/') : file.name }));
+    const selected = entries.filter(entry => !entry.path.split('/').some(part => ['.git', '.picoding', 'node_modules'].includes(part)));
+    const ignored = entries.length - selected.length;
+    let uploaded = 0; let failed = 0; let firstError = '';
+    setBusy(true);
+    try {
+      for (let index = 0; index < selected.length; index++) {
+        if (controller.signal.aborted) break;
+        const { file, path } = selected[index];
+        setUploadStatus('正在上传 ' + (index + 1) + '/' + selected.length + ' · ' + path);
+        try {
+          if (file.size > maxUploadBytes) throw new Error('单个文件不能超过 10 MB');
+          await uploadFile(task.id, path, file, controller.signal); uploaded++;
+        } catch (error) { if (controller.signal.aborted) break; failed++; firstError ||= path + '：' + message(error); }
+      }
+      if (!controller.signal.aborted) {
+        setUploadStatus('已上传 ' + uploaded + ' 个文件' + (ignored ? '，忽略 ' + ignored + ' 个依赖或保留文件' : '') + (failed ? '，' + failed + ' 个未上传' : ''));
+        if (firstError) report(firstError);
+        setExpanded(value => new Set(value));
+      }
+    } finally { if (!controller.signal.aborted) setBusy(false); uploadController.current = undefined; }
+  }
   useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false); }, [dirty, onDirtyChange]);
   useEffect(() => {
     if (!task || !live) return;
@@ -145,7 +177,14 @@ function Files({ task, live, revision, report, onDirtyChange }: { task?: Task; l
   if (!live) return <ComputerEmpty tab="code" task={task} />;
   return <div className="file-workspace">
     <aside className="file-tree">
-      <div className="file-tree-heading"><span>项目文件</span><button className="icon-button" aria-label="新建文件" title="新建文件" disabled={!editable || busy} onClick={() => setNewName('')}><Icon name="plus" size={15} /></button></div>
+      <div className="file-tree-heading"><span>项目文件</span><div className="file-tree-actions">
+        <button className="icon-button" aria-label="上传项目文件" title="上传文件或文件夹" aria-expanded={uploadMenu} aria-controls="upload-options" disabled={!editable || busy} onClick={() => setUploadMenu(!uploadMenu)}><Icon name="upload" size={15} /></button>
+        <button className="icon-button" aria-label="新建文件" title="新建文件" disabled={!editable || busy} onClick={() => setNewName('')}><Icon name="plus" size={15} /></button>
+      </div></div>
+      {uploadMenu && <div id="upload-options" className="upload-options"><button onClick={() => { setUploadMenu(false); fileInput.current?.click(); }}><Icon name="file" size={14} />选择文件</button><button onClick={() => { setUploadMenu(false); directoryInput.current?.click(); }}><Icon name="folder" size={14} />选择文件夹</button><p>每个文件不超过 10 MB，同名文件不会覆盖。</p></div>}
+      <input hidden type="file" multiple ref={fileInput} aria-label="选择上传文件" onChange={event => { const input = event.currentTarget; void upload(input.files, false); input.value = ''; }} />
+      <input hidden type="file" multiple ref={node => { directoryInput.current = node; node?.setAttribute('webkitdirectory', ''); }} aria-label="选择上传文件夹" onChange={event => { const input = event.currentTarget; void upload(input.files, true); input.value = ''; }} />
+      {uploadStatus && <p className="upload-status" role="status">{uploadStatus}</p>}
       {newName !== undefined && <form className="new-file-form" onSubmit={create}><input aria-label="新文件路径" autoFocus placeholder="例如 src/app.ts" value={newName} onChange={event => setNewName(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') setNewName(undefined); }} /><button type="submit" disabled={busy || !newName.trim()} aria-label="创建文件"><Icon name="check" size={14} /></button></form>}
       {tree('')}{!directories['']?.length && <p className="tree-empty">还没有项目文件</p>}
     </aside>

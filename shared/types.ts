@@ -27,6 +27,8 @@ export interface Task {
   error?: string;
   browserUrl?: string;
   pendingPrompt?: string;
+  source?: GitProjectSource;
+  pendingImport?: GitProjectSource;
   messages: ChatMessage[];
   tools: ToolCall[];
   terminal: TerminalEntry[];
@@ -49,6 +51,9 @@ export interface FileEntry {
 
 export interface FileContent { path: string; content: string; version: string; }
 export interface FileWriteOptions { createOnly?: boolean; expectedVersion?: string; }
+export interface GitProjectSource { type: 'git'; url: string; branch?: string; }
+export interface ImportResult { head: string; branch: string; }
+export const maxUploadBytes = 10 * 1024 * 1024;
 export interface CommandResult { output: string; exitCode: number | null; truncated?: boolean; }
 export interface BrowserState { url: string; title: string; tabs: { id: number; url: string; title: string }[]; }
 

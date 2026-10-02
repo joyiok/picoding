@@ -1,7 +1,8 @@
 import { lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import type { FileEntry, FileWriteOptions } from '../shared/types.js';
+import { maxUploadBytes, type FileEntry, type FileWriteOptions } from '../shared/types.js';
+import { uploadPath } from '../shared/project.js';
 import { HttpError } from '../server/http.js';
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
@@ -66,6 +67,18 @@ export class WorkspaceFiles {
 
   write(input: string, content: string, options: FileWriteOptions = {}) {
     return this.serialize(input, () => this.writeUnlocked(input, content, options));
+  }
+
+  async upload(input: string, content: Buffer) {
+    const path = uploadPath(input);
+    if (content.length > maxUploadBytes) throw new HttpError(413, '单个上传文件不能超过 10 MB');
+    return this.serialize(path, async () => {
+      const target = await this.path(path, true);
+      await mkdir(dirname(target), { recursive: true });
+      try { await writeFile(target, content, { flag: 'wx' }); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new HttpError(409, '同名文件已存在，未覆盖。请先重命名或移走原文件。'); throw error; }
+      return { ok: true as const, path, size: content.length };
+    });
   }
 
   private async writeUnlocked(input: string, content: string, options: FileWriteOptions = {}) {

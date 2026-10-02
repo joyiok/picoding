@@ -1,10 +1,29 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { WorkspaceFiles } from '../sandbox/files.js';
 import { executeCommand } from '../sandbox/commands.js';
+import { maxUploadBytes } from '../shared/types.js';
+
+test('uploads preserve binary bytes and refuse existing files, reserved paths and oversize content', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'picoding-upload-'));
+  const outside = await mkdtemp(join(tmpdir(), 'picoding-upload-outside-'));
+  t.after(() => Promise.all([rm(directory, { recursive: true, force: true }), rm(outside, { recursive: true, force: true })]));
+  const files = new WorkspaceFiles(directory); const content = Buffer.from([0, 255, 128, 1, 2, 3]);
+  await files.upload('assets/data.bin', content);
+  assert.deepEqual(await readFile(join(directory, 'assets/data.bin')), content);
+  await assert.rejects(files.upload('assets/data.bin', Buffer.from('replacement')), /同名文件已存在/);
+  assert.deepEqual(await readFile(join(directory, 'assets/data.bin')), content);
+  await assert.rejects(files.upload('.git/config', content), /不上传/);
+  await assert.rejects(files.upload('../escape.bin', content), /相对路径/);
+  await symlink(outside, join(directory, 'outside'));
+  await assert.rejects(files.upload('outside/secret.bin', content), /超出了项目目录/);
+  await assert.rejects(files.upload('too-large.bin', Buffer.alloc(maxUploadBytes + 1)), /10 MB/);
+  await files.upload('empty.txt', Buffer.alloc(0));
+  assert.equal((await readFile(join(directory, 'empty.txt'))).length, 0);
+});
 
 test('workspace paths reject traversal and symlinks escaping the project', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'picoding-files-'));

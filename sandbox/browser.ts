@@ -18,6 +18,8 @@ export class TaskBrowser {
 
   async start() {
     const profile = '/workspace/.picoding/browser';
+    const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+    const proxy = proxyUrl ? new URL(proxyUrl) : undefined;
     // A task volume outlives its container. Chromium's process locks point to
     // the previous container and must be discarded before its sole browser starts.
     await Promise.all(['SingletonLock', 'SingletonSocket', 'SingletonCookie'].map(name => rm(join(profile, name), { force: true })));
@@ -25,6 +27,7 @@ export class TaskBrowser {
       executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
       headless: false, viewport: null, acceptDownloads: true,
       downloadsPath: '/workspace/downloads',
+      ...(proxy ? { proxy: { server: proxy.protocol + '//' + proxy.host, username: decodeURIComponent(proxy.username), password: decodeURIComponent(proxy.password), bypass: 'localhost,127.0.0.1,[::1]' } } : {}),
       args: ['--no-sandbox', '--disable-dev-shm-usage', '--start-maximized', '--window-size=1280,800'],
     });
     this.context.setDefaultTimeout(12_000);

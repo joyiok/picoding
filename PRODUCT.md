@@ -20,6 +20,12 @@ Runs on the user's machine with a Docker daemon. Each task has its own container
 ## Capabilities and Constraints
 Task creation and history; streamed agent messages and tool calls; isolated project files and commands; preinstalled Chromium; live viewing and human takeover; code editing and diffs; project export. Model API credentials are provided by the user. This first version has no account system or multi-user deployment. Docker is required for task execution.
 
+Confirmed: a blank workspace or public HTTP(S) Git import can be created without model credentials; Docker and the task image are required. Git import accepts an optional branch, finishes before workspace Git baseline initialization, and retains pendingImport after failure for retry without overwriting an existing project. Agent execution still requires the user's model configuration.
+
+Confirmed: file and folder uploads preserve binary bytes and relative subdirectories, with a 10 MiB per-file limit and at most 1000 selected files per batch. The UI excludes .git, .picoding and node_modules; the backend rejects those reserved paths. Existing files produce a 409 conflict and stay intact. Uploads preserve unsaved editor drafts.
+
+Task networking can inherit backend HTTPS_PROXY/HTTP_PROXY or use PICODING_SANDBOX_PROXY; none disables the task proxy. A separate authenticated relay connects a loopback proxy while task containers stay on the Docker bridge. Container-local development URLs bypass the proxy.
+
 Confirmed: model configuration selects the OpenAI or Anthropic API format. The user provides the API endpoint, model ID and key. Both protocols accept custom gateways; no preconfigured service or model catalogue is offered.
 
 Confirmed: model capabilities are editable context capacity (contextWindow), maximum output (maxTokens), and image-input support (supportsImages). New settings start at 128000 / 16384 tokens with images off; these are editable starting values, not model presets. Both token counts must be positive integers and output cannot exceed context capacity. Context capacity drives pi model configuration and compaction budgets; the output cap enters protocol requests and may be reduced further by the SDK when context space is limited.

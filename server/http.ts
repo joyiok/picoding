@@ -5,6 +5,15 @@ export class HttpError extends Error {
 }
 
 export async function readJson<T = Record<string, unknown>>(request: IncomingMessage, limit = 1_048_576): Promise<T> {
+  const data = await readBytes(request, limit);
+  try {
+    const value = JSON.parse(data.toString('utf8'));
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('object required');
+    return value as T;
+  } catch { throw new HttpError(400, '请求必须包含有效的 JSON 对象'); }
+}
+
+export async function readBytes(request: IncomingMessage, limit: number): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
@@ -12,11 +21,7 @@ export async function readJson<T = Record<string, unknown>>(request: IncomingMes
     if (size > limit) throw new HttpError(413, '请求内容过大');
     chunks.push(Buffer.from(chunk));
   }
-  try {
-    const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('object required');
-    return value as T;
-  } catch { throw new HttpError(400, '请求必须包含有效的 JSON 对象'); }
+  return Buffer.concat(chunks);
 }
 
 export function json(response: ServerResponse, value: unknown, status = 200) {

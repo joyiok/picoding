@@ -14,12 +14,13 @@ import { TaskStore } from '../server/store.js';
 import { Workbench } from '../server/workbench.js';
 import { WorkspaceFiles } from '../sandbox/files.js';
 import type { FileWriteOptions, Task } from '../shared/types.js';
+import { maxUploadBytes } from '../shared/types.js';
 
 type Reply = { status: number; body: Record<string, unknown> };
 // Exercise the real HTTP router without listening on a socket in this restricted workspace.
 function request(server: Server, path: string, method = 'GET', body?: unknown, extraHeaders: Record<string, string> = {}): Promise<Reply> {
   return new Promise(resolve => {
-    const input = Object.assign(Readable.from(body === undefined ? [] : [Buffer.from(JSON.stringify(body))]), {
+    const input = Object.assign(Readable.from(body === undefined ? [] : [Buffer.isBuffer(body) ? body : Buffer.from(JSON.stringify(body))]), {
       url: `/api${path}`, method, headers: { host: `127.0.0.1:${config.port}`, ...extraHeaders },
     });
     const response = new EventEmitter() as EventEmitter & { headersSent: boolean; statusCode: number; setHeader: () => void; writeHead: (status: number) => void; end: (text?: string) => void };
@@ -103,4 +104,30 @@ test('HTTP file saves require a version and preserve newer workspace content', a
   const conflict = await request(state.server, route, 'POST', { path: 'app.ts', content: 'old draft', expectedVersion: original.version });
   assert.equal(conflict.status, 409);
   assert.equal((await files.read('app.ts')).content, 'new agent content');
+});
+
+test('HTTP binary uploads enforce task state, relative paths, size limits and exclusive creation', async t => {
+  const state = await setup(); t.after(() => state.close());
+  const workspace = join(state.directory, 'workspace'); await mkdir(workspace);
+  const files = new WorkspaceFiles(workspace);
+  const task: Task = { id: randomUUID(), title: 'upload', status: 'ready', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), messages: [], tools: [], terminal: [] };
+  await state.store.save(task);
+  t.mock.method(state.workbench, 'sandbox', () => ({
+    url: 'http://sandbox.invalid', token: 'test', async stop() {}, async destroy() {},
+    async request<T>(path: string, body?: { path: string; content: string }) {
+      assert.equal(path, '/upload'); assert.ok(body);
+      return files.upload(body.path, Buffer.from(body.content, 'base64')) as Promise<T>;
+    },
+  }));
+  const route = '/tasks/' + task.id + '/upload?path=';
+  const content = Buffer.from([0, 255, 128, 1]);
+  const saved = await request(state.server, route + 'assets/data.bin', 'POST', content);
+  assert.equal(saved.status, 200); assert.equal(saved.body.size, content.length);
+  assert.equal((await request(state.server, route + 'assets/data.bin', 'POST', content)).status, 409);
+  assert.equal((await request(state.server, route + '../escape.bin', 'POST', content)).status, 400);
+  assert.equal((await request(state.server, route + '.picoding/settings.json', 'POST', content)).status, 403);
+  assert.equal((await request(state.server, route + 'large.bin', 'POST', Buffer.alloc(maxUploadBytes + 1))).status, 413);
+  task.status = 'running';
+  assert.equal((await request(state.server, route + 'busy.bin', 'POST', content)).status, 409);
+  assert.equal((await request(state.server, '/tasks', 'POST', { source: { type: 'git', url: 'file:///tmp/repo' } })).status, 400);
 });

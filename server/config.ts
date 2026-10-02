@@ -11,6 +11,7 @@ export const config = {
   maxTasks: Number(process.env.PICODING_MAX_TASKS || 3),
   memory: process.env.PICODING_SANDBOX_MEMORY || '2g',
   cpus: process.env.PICODING_SANDBOX_CPUS || '2',
+  sandboxProxy: process.env.PICODING_SANDBOX_PROXY ?? process.env.HTTPS_PROXY ?? process.env.https_proxy ?? process.env.HTTP_PROXY ?? process.env.http_proxy ?? '',
 };
 
 export const allowedOrigins = new Set([

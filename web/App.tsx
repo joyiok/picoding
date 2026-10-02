@@ -5,6 +5,7 @@ import { Chat } from './Chat';
 import { Computer } from './Computer';
 import { Icon, PiMark } from './Icon';
 import { Settings } from './Settings';
+import { Project } from './Project';
 
 const statuses: Record<string, string> = { creating: '正在准备', ready: '环境就绪', running: '正在执行', pausing: '正在暂停', paused: '你已接管', error: '启动失败', stopped: '环境已停止' };
 
@@ -14,6 +15,7 @@ export function App() {
   const [health, setHealth] = useState<Health>();
   const [settings, setSettings] = useState<PublicSettings>();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [projectOpen, setProjectOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 1000px)').matches);
   const [editorDirty, setEditorDirty] = useState(false);
@@ -146,8 +148,8 @@ export function App() {
       {error && <div className="error-banner" role="alert"><Icon name="alert" size={17} /><span>{error}</span>{!connected && <button onClick={() => { setError(''); void refresh(); }}>重试</button>}<button className="icon-button" aria-label="关闭提示" onClick={() => setError('')}><Icon name="close" size={15} /></button></div>}
       <div className="mobile-switch" role="group" aria-label="工作区视图"><button className={mobilePanel === 'chat' ? 'active' : ''} onClick={() => setMobilePanel('chat')}><Icon name="chat" size={15} />对话</button><button className={mobilePanel === 'computer' ? 'active' : ''} onClick={() => setMobilePanel('computer')}><Icon name="browser" size={15} />任务电脑</button></div>
       <div className={`workbench-grid mobile-${mobilePanel}`}>
-        <section className="conversation" aria-label="与 pi 对话"><div className="conversation-title"><span><PiMark size={20} />对话</span><span>{task ? '任务进行中' : '从这里开始'}</span></div>
-          <Chat task={task} suggest={value => { setDraft(value); composer.current?.focus(); }} />
+        <section className="conversation" aria-label="与 pi 对话"><div className="conversation-title"><span><PiMark size={20} />对话</span><span>{task ? statuses[task.status] : '从这里开始'}</span></div>
+          <Chat task={task} suggest={value => { setDraft(value); composer.current?.focus(); }} openProject={() => setProjectOpen(true)} />
           <div className="conversation-bottom">
             {!task && !loading && needsSetup && <div className="setup-guide"><div className="setup-heading"><Icon name="settings" size={15} /><strong>准备好，就可以开始了</strong></div><div className="setup-row"><span className={`setup-check ${health?.docker.imageReady ? 'done' : ''}`}><Icon name={health?.docker.imageReady ? 'check' : 'terminal'} size={14} /></span><div><strong>{health?.docker.imageReady ? '任务环境已就绪' : '准备任务环境'}</strong><small>{health?.docker.available ? '在项目目录运行，预装浏览器和工具' : '启动 Docker，然后在项目目录运行'}</small></div><button className="copy-command" onClick={() => { void navigator.clipboard.writeText('npm run sandbox:build').then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }).catch(() => setError('构建命令：npm run sandbox:build')); }} title="复制构建命令"><Icon name={copied ? 'check' : 'copy'} size={14} />{copied ? '已复制' : '构建命令'}</button></div><code className="setup-command">npm run sandbox:build</code><div className="setup-row"><span className={`setup-check ${settings?.configured ? 'done' : ''}`}><Icon name={settings?.configured ? 'check' : 'settings'} size={14} /></span><div><strong>{settings?.configured ? '模型已配置' : '连接一个模型'}</strong><small>使用你的 API Key 和模型</small></div><button className="text-button" onClick={() => setSettingsOpen(true)}>{settings?.configured ? '更改' : '去设置'}<Icon name="chevron" size={13} /></button></div></div>}
             {task?.error && <div className="task-error" role="alert"><Icon name="alert" size={15} /><span>{task.error}</span></div>}
@@ -161,5 +163,6 @@ export function App() {
       <footer className="workspace-footer"><button className="environment-check" disabled={checkingEnvironment} onClick={() => void checkEnvironment()} title="重新检查 Docker 和任务环境"><span className={`status-dot ${health?.docker.imageReady ? 'online' : ''}`} />{checkingEnvironment ? '正在检查环境…' : health?.docker.imageReady ? '任务环境已就绪' : health?.docker.available ? '环境镜像待构建 · 重新检查' : '等待 Docker · 重新检查'}</button>{task && !['creating', 'pausing', 'stopped'].includes(task.status) && <button onClick={() => void act('stop')}><Icon name="stop" size={12} />停止环境</button>}<span>Powered by pi</span></footer>
     </main>
     {settingsOpen && <Settings initial={settings} onClose={() => setSettingsOpen(false)} onSaved={value => { setSettings(value); void refresh(); }} />}
+    {projectOpen && <Project onClose={() => setProjectOpen(false)} onCreated={created => { setTasks(tasks => [created, ...tasks]); setActiveId(created.id); setError(''); setMobilePanel('computer'); }} />}
   </div>;
 }

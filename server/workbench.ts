@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
-import type { ChatMessage, Task, TaskEvent, TerminalEntry } from '../shared/types.js';
+import type { ChatMessage, GitProjectSource, Task, TaskEvent, TerminalEntry } from '../shared/types.js';
 import { createPiSession } from './agent.js';
 import { config } from './config.js';
 import { DockerSandbox, sandboxApi, type Sandbox } from './docker.js';
@@ -19,10 +19,10 @@ export class Workbench {
   private manualCommands = new Map<string, AbortController>();
   constructor(readonly store: TaskStore, readonly settings: SettingsStore, private readonly makeSandbox: (id: string) => Sandbox & { start(): Promise<void> } = id => new DockerSandbox(id)) {}
 
-  async create(title: string, prompt?: string) {
+  async create(title: string, prompt?: string, source?: GitProjectSource) {
     if (this.store.list().filter(task => !['error', 'stopped'].includes(task.status)).length >= config.maxTasks) throw new HttpError(409, `最多同时运行 ${config.maxTasks} 个环境，请先停止一个任务`);
     const now = new Date().toISOString();
-    const task: Task = { id: randomUUID(), title, status: 'creating', createdAt: now, updatedAt: now, messages: prompt ? [{ id: randomUUID(), role: 'user', text: prompt, createdAt: now }] : [], tools: [], terminal: [], pendingPrompt: prompt };
+    const task: Task = { id: randomUUID(), title, status: 'creating', createdAt: now, updatedAt: now, messages: prompt ? [{ id: randomUUID(), role: 'user', text: prompt, createdAt: now }] : [], tools: [], terminal: [], pendingPrompt: prompt, ...(source ? { source, pendingImport: source } : {}) };
     await this.store.save(task);
     void this.start(task.id).catch(error => console.error('任务启动失败', errorMessage(error)));
     return task;
@@ -38,6 +38,11 @@ export class Workbench {
       try {
         await sandbox.start();
         this.sandboxes.set(id, sandbox);
+        if (task.pendingImport) {
+          await sandbox.request('/import', task.pendingImport);
+          delete task.pendingImport;
+          await this.store.save(task);
+        }
         // Establish a baseline for a fresh workspace without committing user work on restart.
         await sandboxApi.command(sandbox, 'if [ ! -d .git ]; then git init -q && git -c user.name=PiCoding -c user.email=local@picoding.invalid commit --allow-empty -qm "Initial workspace"; fi; if [ -d .git/info ]; then printf "\\n.picoding/\\nnode_modules/\\n" >> .git/info/exclude; fi');
         task.status = 'ready'; this.changed(task);
@@ -207,6 +212,10 @@ export class Workbench {
     if (task.status !== 'ready') throw new HttpError(409, task.status === 'paused' ? '请先归还浏览器，再继续任务' : '请等待当前操作完成或先启动环境');
     if (this.manualCommands.has(id)) throw new HttpError(409, '请等待终端命令完成，再发送任务');
     if (!this.settings.public().configured) throw new HttpError(409, '请先在模型设置中填写 API 格式、地址、模型 ID 和密钥');
+  }
+
+  validateEdit(id: string) {
+    if (!['ready', 'paused'].includes(this.store.get(id).status) || this.manualCommands.has(id)) throw new HttpError(409, '请先停止 agent 或等待终端命令完成，再修改文件');
   }
 
   async shutdown() {

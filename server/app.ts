@@ -1,10 +1,11 @@
 import { createServer, type IncomingMessage } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, relative, isAbsolute } from 'node:path';
-import type { FileWriteOptions, ModelSettingsInput } from '../shared/types.js';
+import { maxUploadBytes, type FileWriteOptions, type ModelSettingsInput } from '../shared/types.js';
+import { gitProjectSource, uploadPath } from '../shared/project.js';
 import { allowedOrigins, config } from './config.js';
 import { dockerHealth, sandboxApi } from './docker.js';
-import { checkOrigin, errorMessage, HttpError, json, readJson, requireString } from './http.js';
+import { checkOrigin, errorMessage, HttpError, json, readBytes, readJson, requireString } from './http.js';
 import { proxyHttp, proxyUpgrade } from './proxy.js';
 import { Workbench } from './workbench.js';
 
@@ -40,12 +41,13 @@ export function createApp(workbench: Workbench) {
       if (url.pathname === '/api/tasks') {
         if (method === 'GET') return json(response, workbench.store.list());
         if (method === 'POST') {
-          const body = await readJson<{ title?: string; prompt?: string }>(request);
+          const body = await readJson<{ title?: string; prompt?: string; source?: unknown }>(request);
           const prompt = body.prompt === undefined ? undefined : requireString(body.prompt, '任务内容');
+          const source = body.source === undefined ? undefined : gitProjectSource(body.source);
           const health = await dockerHealth();
           if (!health.available || !health.imageReady) throw new HttpError(503, health.message);
           if (prompt && !workbench.settings.public().configured) throw new HttpError(409, '请先填写 API 格式、地址、模型 ID 和密钥');
-          return json(response, await workbench.create(requireString(body.title || prompt?.slice(0, 40) || '新任务', '任务名称', 120), prompt), 201);
+          return json(response, await workbench.create(requireString(body.title || prompt?.slice(0, 40) || '新任务', '任务名称', 120), prompt, source), 201);
         }
       }
       const match = /^\/api\/tasks\/([a-f\d-]{36})(?:\/(.*))?$/.exec(url.pathname);
@@ -70,11 +72,18 @@ export function createApp(workbench: Workbench) {
         if (action === 'files' && method === 'GET') return json(response, await sandboxApi.files(workbench.sandbox(id), url.searchParams.get('path') || ''));
         if (action === 'file' && method === 'GET') return json(response, await sandboxApi.read(workbench.sandbox(id), requireString(url.searchParams.get('path'), '文件路径', 2048)));
         if (action === 'file' && method === 'POST') {
-          if (!['ready', 'paused'].includes(task.status)) throw new HttpError(409, '请先停止 agent，再编辑文件');
+          workbench.validateEdit(id);
           const body = await readJson<{ path: string; content: string } & FileWriteOptions>(request, 3_000_000);
           const createOnly = body.createOnly === true;
           if (!createOnly && typeof body.expectedVersion !== 'string') throw new HttpError(400, '保存文件需要原始版本，请重新读取文件');
           const result = await sandboxApi.write(workbench.sandbox(id), requireString(body.path, '文件路径', 2048), body.content, { createOnly, expectedVersion: body.expectedVersion });
+          workbench.events.publish(id, { type: 'files_changed' }); return json(response, result);
+        }
+        if (action === 'upload' && method === 'POST') {
+          workbench.validateEdit(id);
+          const path = uploadPath(url.searchParams.get('path'));
+          const content = await readBytes(request, maxUploadBytes);
+          const result = await workbench.sandbox(id).request('/upload', { path, content: content.toString('base64') });
           workbench.events.publish(id, { type: 'files_changed' }); return json(response, result);
         }
         if (action === 'command' && method === 'POST') {

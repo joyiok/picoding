@@ -20,6 +20,7 @@ const paths: Record<string, React.ReactNode> = {
   hand: <><path d="M9 12V5a2 2 0 0 1 4 0v6-5a2 2 0 0 1 4 0v5-3a2 2 0 0 1 4 0v7c0 5-3 7-7 7-3 0-5-2-7-5l-3-4a2 2 0 0 1 3-3l2 2Z" /></>,
   refresh: <><path d="M20 7a9 9 0 1 0 1 7M20 3v5h-5" /></>,
   download: <><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5" /></>,
+  upload: <><path d="M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5" /></>,
   copy: <><rect x="8" y="8" width="13" height="13" rx="2" /><path d="M16 8V3H3v13h5" /></>,
   chat: <path d="M4 4h16v13H8l-4 4Z" />,
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,

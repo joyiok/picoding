@@ -2,12 +2,13 @@ import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import type { BrowserAction, FileWriteOptions } from '../shared/types.js';
+import { maxUploadBytes, type BrowserAction, type FileWriteOptions, type GitProjectSource } from '../shared/types.js';
 import { HttpError, errorMessage, json, readJson, requireString } from '../server/http.js';
 import { proxyHttp, proxyUpgrade } from '../server/proxy.js';
 import { WorkspaceFiles } from './files.js';
 import { executeCommand } from './commands.js';
 import { TaskBrowser } from './browser.js';
+import { importRepository } from './import.js';
 
 const token = process.env.WORKER_TOKEN;
 if (!token) throw new Error('WORKER_TOKEN is required. Run this worker inside a PiCoding task container.');
@@ -37,6 +38,18 @@ const server = createServer(async (request, response) => {
       const body = await readJson<{ path: string; oldText: string; newText: string }>(request);
       if (typeof body.oldText !== 'string' || typeof body.newText !== 'string') throw new HttpError(400, '文本必须是字符串');
       return json(response, await files.edit(requireString(body.path, '文件路径', 2048), body.oldText, body.newText));
+    }
+    if (request.method === 'POST' && url.pathname === '/upload') {
+      const body = await readJson<{ path: string; content: string }>(request, Math.ceil(maxUploadBytes * 4 / 3) + 4096);
+      if (typeof body.content !== 'string' || body.content.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(body.content)) throw new HttpError(400, '上传文件编码无效');
+      return json(response, await files.upload(body.path, Buffer.from(body.content, 'base64')));
+    }
+    if (request.method === 'POST' && url.pathname === '/import') {
+      const body = await readJson<GitProjectSource>(request);
+      const controller = new AbortController(); activeCommands.add(controller);
+      response.on('close', () => { if (!response.writableEnded) controller.abort(); });
+      try { return json(response, await importRepository(root, body, controller.signal)); }
+      finally { activeCommands.delete(controller); }
     }
     if (request.method === 'GET' && url.pathname === '/browser') return json(response, await browser.state());
     if (request.method === 'POST' && url.pathname === '/browser') return json(response, await browser.action(await readJson<BrowserAction>(request)));

@@ -55,20 +55,22 @@ export class DockerSandbox implements Sandbox {
   async start() {
     // Only remove a container with this task's exact, application-generated name.
     await this.stop();
-    await docker([
-      'run', '--detach', '--init', '--name', this.name,
-      '--label', 'app=picoding', '--label', `picoding.task=${this.id}`,
-      '--user', '1000:1000', '--cap-drop', 'ALL',
-      '--security-opt', 'no-new-privileges=true', '--read-only',
-      '--pids-limit', '256', '--memory', config.memory, '--cpus', config.cpus,
-      '--shm-size', '256m',
-      '--tmpfs', '/tmp:rw,nosuid,size=512m,mode=1777',
-      '--tmpfs', '/home/agent:rw,nosuid,uid=1000,gid=1000,size=512m',
-      '--mount', `type=volume,src=${this.volume},dst=/workspace`,
-      '--publish', '127.0.0.1::4311',
-      '--env', `WORKER_TOKEN=${this.token}`, config.image,
-    ]);
     try {
+      const proxy = await this.networkProxy();
+      const proxyEnv = proxy ? ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy'].flatMap(key => ['--env', key + '=' + proxy]).concat(['--env', 'NO_PROXY=localhost,127.0.0.1,::1', '--env', 'no_proxy=localhost,127.0.0.1,::1']) : [];
+      await docker([
+        'run', '--detach', '--init', '--name', this.name,
+        '--label', 'app=picoding', '--label', `picoding.task=${this.id}`,
+        '--user', '1000:1000', '--cap-drop', 'ALL',
+        '--security-opt', 'no-new-privileges=true', '--read-only',
+        '--pids-limit', '256', '--memory', config.memory, '--cpus', config.cpus,
+        '--shm-size', '256m',
+        '--tmpfs', '/tmp:rw,nosuid,size=512m,mode=1777',
+        '--tmpfs', '/home/agent:rw,nosuid,uid=1000,gid=1000,size=512m',
+        '--mount', `type=volume,src=${this.volume},dst=/workspace`,
+        '--publish', '127.0.0.1::4311',
+        ...proxyEnv, '--env', `WORKER_TOKEN=${this.token}`, config.image,
+      ]);
       const port = await docker(['inspect', '--format', '{{(index (index .NetworkSettings.Ports "4311/tcp") 0).HostPort}}', this.name]);
       if (!/^\d+$/.test(port)) throw new Error('Docker 未分配沙盒端口');
       this.url = `http://127.0.0.1:${port}`;
@@ -99,11 +101,39 @@ export class DockerSandbox implements Sandbox {
   async stop() {
     try { await docker(['rm', '-f', this.name]); }
     catch (error) { if (!/No such container/i.test(errorMessage(error))) throw error; }
+    try { await docker(['rm', '-f', 'picoding-proxy-' + this.id]); }
+    catch (error) { if (!/No such container/i.test(errorMessage(error))) throw error; }
   }
   async destroy() {
     await this.stop();
     try { await docker(['volume', 'rm', this.volume]); }
     catch (error) { if (!/No such volume/i.test(errorMessage(error))) throw error; }
+  }
+
+  private async networkProxy() {
+    if (!config.sandboxProxy || config.sandboxProxy === 'none') return '';
+    let proxy: URL;
+    try { proxy = new URL(config.sandboxProxy); }
+    catch { throw new HttpError(400, '任务环境代理地址无效，请检查 PICODING_SANDBOX_PROXY'); }
+    if (!['http:', 'https:'].includes(proxy.protocol)) throw new HttpError(400, '任务环境仅支持 HTTP 或 HTTPS 代理');
+    if (!['localhost', '127.0.0.1', '[::1]'].includes(proxy.hostname)) return proxy.href;
+    const gateway = await docker(['network', 'inspect', 'bridge', '--format', '{{range .IPAM.Config}}{{.Gateway}}{{end}}']);
+    if (!/^\d+\.\d+\.\d+\.\d+$/.test(gateway)) throw new Error('无法找到 Docker 网桥，请为任务环境配置可访问的代理地址');
+    const name = 'picoding-proxy-' + this.id;
+    const token = randomBytes(32).toString('hex');
+    await docker(['run', '--detach', '--init', '--name', name, '--label', 'app=picoding', '--label', 'picoding.task=' + this.id,
+      '--network', 'host', '--user', '1000:1000', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges=true', '--read-only',
+      '--pids-limit', '32', '--memory', '128m', '--cpus', '0.25', '--entrypoint', 'node',
+      '--env', 'PICODING_PROXY_RELAY=1', '--env', 'UPSTREAM_PROXY=' + proxy.href,
+      '--env', 'RELAY_TOKEN=' + token, '--env', 'RELAY_GATEWAY=' + gateway,
+      config.image, '/opt/picoding/dist/sandbox/forward-proxy.js']);
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const port = /PROXY_PORT=(\d+)/.exec(await docker(['logs', name]))?.[1];
+      if (port) return 'http://task:' + token + '@' + gateway + ':' + port;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error('任务环境代理启动失败，请检查代理地址和 Docker host 网络支持');
   }
 }
 
