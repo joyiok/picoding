@@ -14,6 +14,8 @@ if (!Number.isFinite(Number(cpus)) || Number(cpus) <= 0) throw new Error('PICODI
 
 export const config = {
   host: process.env.PICODING_HOST || '127.0.0.1',
+  publicOrigin: process.env.PICODING_PUBLIC_ORIGIN || undefined,
+  password: process.env.PICODING_ACCESS_PASSWORD || undefined,
   port: positiveInteger(process.env.PICODING_PORT, 4310, 'PICODING_PORT', 65_535),
   dataDir: resolve(process.env.PICODING_DATA_DIR || '.picoding'),
   image: process.env.PICODING_SANDBOX_IMAGE || 'picoding-sandbox:local',
@@ -22,8 +24,3 @@ export const config = {
   cpus,
   sandboxProxy: process.env.PICODING_SANDBOX_PROXY ?? process.env.HTTPS_PROXY ?? process.env.https_proxy ?? process.env.HTTP_PROXY ?? process.env.http_proxy ?? '',
 };
-
-export const allowedOrigins = new Set([
-  `http://127.0.0.1:${config.port}`, `http://localhost:${config.port}`,
-  'http://127.0.0.1:5173', 'http://localhost:5173',
-]);

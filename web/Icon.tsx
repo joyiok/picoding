@@ -27,6 +27,7 @@ const paths: Record<string, React.ReactNode> = {
   external: <><path d="M14 3h7v7m0-7L10 14M10 3H3v18h18v-7" /></>,
   alert: <><circle cx="12" cy="12" r="9" /><path d="M12 7v6m0 3v1" /></>,
   trash: <><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7" /></>,
+  logout: <><path d="M9 3H3v18h6M10 12h11m-4-4 4 4-4 4" /></>,
 };
 export function Icon({ name, size = 18, className, style }: { name: string; size?: number; className?: string; style?: CSSProperties }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className} style={style}>{paths[name] || paths.file}</svg>;

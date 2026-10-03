@@ -4,8 +4,9 @@ import { registerHooks } from 'node:module';
 import { setImmediate } from 'node:timers/promises';
 import { act, createElement } from 'react';
 import type { Root } from 'react-dom/client';
-import { Window } from 'happy-dom';
+import { Window, type HTMLInputElement as FixtureInput } from 'happy-dom';
 import type { Task } from '../shared/types.js';
+import type { AccessStatus } from '../server/access.js';
 
 const styles = registerHooks({ load(url, context, next) {
   return url.endsWith('.css') ? { format: 'module', source: 'export {};', shortCircuit: true } : next(url, context);
@@ -21,7 +22,7 @@ function task(id: string, title: string): Task {
 function json(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } }); }
 
 // A DOM fixture with explicit API replies; no Docker, browser or real model is used.
-async function setup(t: TestContext) {
+async function setup(t: TestContext, protectedAccess = false) {
   const window = new Window({ url: 'http://127.0.0.1:4310', width: 1280, settings: { disableIframePageLoading: true, disableCSSFileLoading: true, disableJavaScriptFileLoading: true } });
   const saved = new Map<string, PropertyDescriptor | undefined>();
   class Events {
@@ -41,12 +42,16 @@ async function setup(t: TestContext) {
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   }
   const tasks = [task(taskA, 'Task A'), task(taskB, 'Task B')];
+  let access: AccessStatus = { required: protectedAccess, authenticated: !protectedAccess };
+  const calls: string[] = [];
   const pending: { path: string; body?: unknown; resolve: (reply: Response) => void }[] = [];
   t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, options?: RequestInit) => {
     const path = String(input);
+    calls.push(path);
     if (options?.method === 'POST' || options?.method === 'DELETE') {
       return new Promise<Response>(resolve => { pending.push({ path, body: options.body ? JSON.parse(String(options.body)) : undefined, resolve }); });
     }
+    if (path === '/api/auth') return json(access);
     if (path === '/api/tasks') return json(tasks);
     if (path === '/api/health') return json({ docker: { available: true, imageReady: true }, model: { configured: true }, version: 'test' });
     if (path === '/api/settings') return json({ configured: true, hasApiKey: true, protocol: 'openai', model: 'fixture', baseUrl: 'https://fixture.invalid/v1', contextWindow: 128000, maxTokens: 16384, supportsImages: false });
@@ -64,8 +69,9 @@ async function setup(t: TestContext) {
   });
   const { createRoot } = await import('react-dom/client');
   const { App } = await import('../web/App.js');
+  const { AccessGate } = protectedAccess ? await import('../web/AccessGate.js') : { AccessGate: undefined };
   const container = window.document.createElement('div'); window.document.body.append(container);
-  async function mount() { root = createRoot(container as unknown as HTMLElement); await act(async () => { root!.render(createElement(App)); }); }
+  async function mount() { root = createRoot(container as unknown as HTMLElement); await act(async () => { root!.render(createElement(AccessGate || App)); }); }
   await mount();
   const composer = () => {
     const input = window.document.querySelector('textarea[aria-label="向 pi 描述任务"]'); assert.ok(input);
@@ -88,6 +94,7 @@ async function setup(t: TestContext) {
   }
   async function reply(value: unknown, status = 200) {
     const request = pending.shift(); assert.ok(request, 'Expected a pending API request');
+    if (status === 200 && request.path.startsWith('/api/auth/')) access = value as AccessStatus;
     await act(async () => { request.resolve(json(value, status)); });
     return request;
   }
@@ -96,7 +103,15 @@ async function setup(t: TestContext) {
   function beforeUnload() {
     const event = new window.Event('beforeunload', { cancelable: true }); window.dispatchEvent(event); return event.defaultPrevented;
   }
-  return { composer, click, select, type, reply, selected, remount, tasks, pending, storage: window.sessionStorage, beforeUnload };
+  async function typePassword(value: string) {
+    const input = window.document.querySelector<FixtureInput>('#access-password'); assert.ok(input);
+    await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, value); input.dispatchEvent(new window.Event('input', { bubbles: true })); });
+  }
+  async function expireAccess() {
+    access = { required: true, authenticated: false };
+    await act(async () => { window.dispatchEvent(new window.Event('picoding:unauthorized')); });
+  }
+  return { composer, click, select, type, reply, selected, remount, tasks, pending, storage: window.sessionStorage, beforeUnload, typePassword, calls, document: window.document, expireAccess };
 }
 
 test('task switching preserves each message draft and the new-task draft', async t => {
@@ -188,4 +203,41 @@ test('storage failures preserve in-memory drafts and trigger page-exit protectio
   assert.equal(ui.composer().value, 'Keep this even when storage fails');
   assert.equal(ui.beforeUnload(), true);
   await ui.type(''); assert.equal(ui.beforeUnload(), false);
+});
+
+test('login gate checks access before requesting private tasks and preserves an incorrect password for retry', async t => {
+  const ui = await setup(t, true);
+  assert.equal(ui.calls.includes('/api/tasks'), false);
+  assert.match(ui.document.querySelector('h1')!.textContent, /登录/);
+  await ui.typePassword('wrong-password'); await ui.click('.access-submit');
+  assert.deepEqual(ui.pending[0].body, { password: 'wrong-password' });
+  await ui.reply({ error: '访问密码不正确' }, 401);
+  assert.equal(ui.document.querySelector<FixtureInput>('#access-password')!.value, 'wrong-password');
+  assert.match(ui.document.querySelector('[role="alert"]')!.textContent, /不正确/);
+  assert.equal(ui.calls.includes('/api/tasks'), false);
+  await ui.typePassword('correct-fixture-password'); await ui.click('.access-submit');
+  await ui.reply({ required: true, authenticated: true, expiresAt: Date.now() + 3600_000 });
+  assert.equal(ui.calls.includes('/api/tasks'), true);
+  assert.equal(ui.document.querySelector('#access-password'), null);
+});
+
+test('logout locks the workspace and reauthentication keeps the current task and message draft', async t => {
+  const ui = await setup(t, true);
+  await ui.typePassword('fixture-password'); await ui.click('.access-submit'); await ui.reply({ required: true, authenticated: true, expiresAt: Date.now() + 3600_000 });
+  await ui.select('Task A'); await ui.type('Keep this message while logged out');
+  await ui.click('button[aria-label="退出登录"]'); await ui.reply({ required: true, authenticated: false });
+  assert.equal(ui.document.querySelector('.access-workspace')!.hasAttribute('hidden'), true);
+  assert.equal(ui.document.querySelector<FixtureInput>('#access-password')!.value, '');
+  await ui.typePassword('fixture-password'); await ui.click('.access-submit'); await ui.reply({ required: true, authenticated: true, expiresAt: Date.now() + 3600_000 });
+  assert.equal(ui.selected(), 'Task A'); assert.equal(ui.composer().value, 'Keep this message while logged out');
+  assert.equal(ui.document.querySelector('.access-workspace')!.hasAttribute('hidden'), false);
+});
+
+test('an expired API session shows login without discarding the current draft', async t => {
+  const ui = await setup(t, true);
+  await ui.typePassword('fixture-password'); await ui.click('.access-submit'); await ui.reply({ required: true, authenticated: true, expiresAt: Date.now() + 3600_000 });
+  await ui.type('Draft before session expiration'); await ui.expireAccess();
+  assert.ok(ui.document.querySelector('#access-password'));
+  await ui.typePassword('fixture-password'); await ui.click('.access-submit'); await ui.reply({ required: true, authenticated: true, expiresAt: Date.now() + 3600_000 });
+  assert.equal(ui.composer().value, 'Draft before session expiration');
 });

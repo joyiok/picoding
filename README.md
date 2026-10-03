@@ -1,6 +1,6 @@
 # PiCoding
 
-以 **pi coding-agent** 为核心的本地 Web 编程工作台。每个任务拥有一个独立 Linux 容器，预装 Chromium、Git、Node.js、Python 和图形桌面。你能看到 agent 的对话、工具调用、文件改动、命令结果，并接管它正在使用的同一个浏览器。
+以 **pi coding-agent** 为核心的私有 Web 编程工作台。每个任务拥有一个独立 Linux 容器，预装 Chromium、Git、Node.js、Python 和图形桌面。你能看到 agent 的对话、工具调用、文件改动、命令结果，并接管它正在使用的同一个浏览器。
 
 ## 启动
 
@@ -25,7 +25,7 @@ npm run build
 npm start
 ```
 
-此时由编译后的 Node 服务同时提供网页和 API，打开 **http://127.0.0.1:4310**；修改 `PICODING_PORT` 后使用相应端口。第一版仅支持本地单用户，不提供登录或多人部署。
+此时由编译后的 Node 服务同时提供网页和 API，打开 **http://127.0.0.1:4310**；修改 `PICODING_PORT` 后使用相应端口。默认仅本机访问。私有远程部署支持访问密码登录，每套实例提供一个共享工作区，不提供多租户账户。部署说明见 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
 ## 使用
 
@@ -106,7 +106,7 @@ pi 在本机控制服务中运行。工作台提供的 sandbox、浏览器操作
 
 资源格式、过滤和持久化由官方 pi 管理，无自定义插件规范或安装器。配置位于 `<PICODING_DATA_DIR>/pi/settings.json`，按 pi 约定发现该目录下的 `skills`、`extensions` 和 `prompts`，也支持显式配置的用户作用域来源。`pi-workspace` 是私有资源解析目录；不会自动加载宿主助手的 `~/.agents/skills` 或任意任务项目的扩展、上下文文件。本地来源按 pi 规则保存，可能显示为规范化相对路径。Skill 目录与辅助文件经标准 tar/Docker 传输复制到 `/workspace/.picoding/pi-skills/<hash>`，供原生工具在任务电脑读取和执行。
 
-容器采用非 root 用户、只读根文件系统、清空 capabilities、禁止提权、进程数和 CPU/内存限额。工作目录是每个任务独立的 Docker volume，没有挂载宿主机目录或 Docker socket。远程桌面经控制服务代理，工作容器 HTTP 接口使用随机凭证，端口只绑定宿主机 loopback。Docker 容器共享宿主机内核，第一版的隔离面向本地单用户；虚拟机级隔离属于后续运行时替换。
+容器采用非 root 用户、只读根文件系统、清空 capabilities、禁止提权、进程数和 CPU/内存限额。工作目录是每个任务独立的 Docker volume，没有挂载宿主机目录或 Docker socket。远程桌面经控制服务代理，工作容器 HTTP 接口使用随机凭证，端口只绑定宿主机 loopback。Docker 容器共享宿主机内核，隔离面向私有实例的可信使用者；虚拟机级隔离属于后续运行时替换。
 
 ## 配置
 
@@ -114,6 +114,9 @@ pi 在本机控制服务中运行。工作台提供的 sandbox、浏览器操作
 
 | 配置 | 默认值 | 用途 |
 | --- | --- | --- |
+| `PICODING_HOST` | `127.0.0.1` | 默认本机监听；远程监听 `0.0.0.0` 必须配置访问保护 |
+| `PICODING_PUBLIC_ORIGIN` | 未配置 | 远程访问的 HTTPS 来源地址，不含路径 |
+| `PICODING_ACCESS_PASSWORD` | 未配置 | 私有工作台访问密码，12–256 字符；远程部署必须设置 |
 | `PICODING_PORT` | `4310` | 控制服务端口，1–65535 的整数；Vite 自动同步代理目标 |
 | `PICODING_DATA_DIR` | `.picoding` | 任务记录、pi 会话和模型设置 |
 | `PICODING_SANDBOX_IMAGE` | `picoding-sandbox:local` | 沙盒镜像 |
@@ -166,7 +169,9 @@ npm run test:integration
 
 `verify` 执行全部测试和生产构建；`doctor` 检查 Node、Docker、任务镜像及模型代理配置。`test:integration` 先构建，再启动真正的 `node dist/server/index.js`，用临时数据目录、虚构凭证和本地确定性 HTTP SSE 模型服务，驱动真实 Docker、Chromium 和 PTY；无需用户模型凭证。
 
-本轮干净 `npm ci` 安装及 `npm run verify` 完成 **67/67 测试和生产构建**。新增 10 项 React 页面交互回归测试，覆盖各任务消息草稿、发送期间继续输入、创建/删除后的导航、刷新恢复、发送失败及浏览器存储失败。测试使用 Happy DOM 和明确的模拟 API，不是实际浏览器或 Docker 验收；本轮未运行完整 `test:integration`。
+访问保护迭代的 `npm run verify` 完成 **77/77 测试和生产构建**。新增真实 HTTP/WebSocket 的登录、来源保护、Cookie 隔离、会话退出/过期回归测试，以及 React 登录重试和草稿恢复测试。`npm run test:access` 验证真实编译控制服务的登录静态页、受保护 API、SSE 退出和重启；以虚构密码和临时数据运行，不验证实际 HTTPS 终止、Docker 或浏览器布局。
+
+消息草稿迭代中，干净 `npm ci` 安装及 `npm run verify` 完成 **67/67 测试和生产构建**。新增 10 项 React 页面交互回归测试，覆盖各任务消息草稿、发送期间继续输入、创建/删除后的导航、刷新恢复、发送失败及浏览器存储失败。测试使用 Happy DOM 和明确的模拟 API，不是实际浏览器或 Docker 验收；本轮未运行完整 `test:integration`。
 
 以下为历史验收证据，本轮未重跑：原生资源迭代完成 **48/48 测试和生产构建**。资源测试使用真实官方 SDK 和明确的合成本地原生包，验证安装/过滤/持久化/移除、Skill 展开和动态资源、扩展工具循环/命令、提示模板、远程原生工具、复制取消及忙碌限制；模型回复脚本化离线提供。
 
@@ -180,4 +185,4 @@ npm run test:integration
 
 ## 后续范围
 
-当前有限的本地单用户流程已实现并自动验收。任务快照/任务分支、多用户账户和云端调度属于范围外增强，尚未包含在此版本中。
+现有本机流程已实现并自动验收；私有部署的交付标准和剩余验收见 ROADMAP.md。任务快照/任务分支、多租户账户和云端调度属于范围外增强，尚未包含在此版本中。

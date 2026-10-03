@@ -1,35 +1,42 @@
-import { createServer, type IncomingMessage } from 'node:http';
+import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, relative, isAbsolute } from 'node:path';
 import { maxUploadBytes, type FileWriteOptions, type ModelSettingsInput } from '../shared/types.js';
 import { gitProjectSource, uploadPath } from '../shared/project.js';
-import { allowedOrigins, config } from './config.js';
+import { config } from './config.js';
 import { dockerHealth, sandboxApi } from './docker.js';
-import { checkOrigin, errorMessage, HttpError, json, readBytes, readJson, requireString } from './http.js';
+import { errorMessage, HttpError, json, readBytes, readJson, requireString } from './http.js';
 import { proxyHttp, proxyUpgrade } from './proxy.js';
 import { Workbench } from './workbench.js';
 import { TerminalBridge } from './terminal.js';
 import { probeModel } from './model-probe.js';
 import type { PiPackageAction } from '../shared/resources.js';
-
-export function checkRequest(request: IncomingMessage) {
-  const host = request.headers.host;
-  if (![ `127.0.0.1:${config.port}`, `localhost:${config.port}` ].includes(host || '')) throw new HttpError(403, '请通过工作台的本地地址访问');
-  checkOrigin(request, allowedOrigins);
-}
+import { AccessControl } from './access.js';
 
 const contentTypes: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.ico': 'image/x-icon' };
 
-export function createApp(workbench: Workbench) {
+export function createApp(workbench: Workbench, access = new AccessControl(config)) {
   const terminals = new TerminalBridge(workbench);
   const webRoot = resolve('dist/web');
   const server = createServer(async (request, response) => {
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Referrer-Policy', 'same-origin');
+    response.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    response.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
     try {
-      checkRequest(request);
+      access.checkRequest(request);
       const url = new URL(request.url || '/', `http://127.0.0.1:${config.port}`);
       const method = request.method || 'GET';
+      if (url.pathname === '/api/auth' && method === 'GET') return json(response, access.status(request));
+      if (url.pathname === '/api/auth/login' && method === 'POST') {
+        const body = await readJson<{ password: unknown }>(request, 4096);
+        const result = await access.login(request, body.password);
+        response.setHeader('Set-Cookie', result.cookie); return json(response, result.status);
+      }
+      if (url.pathname === '/api/auth/logout' && method === 'POST') {
+        response.setHeader('Set-Cookie', access.logout(request)); return json(response, access.status(request));
+      }
+      if (url.pathname.startsWith('/api/')) { access.require(request); access.protectConnection(request, response, () => response.end()); }
       if (url.pathname === '/api/health' && method === 'GET') {
         const settings = workbench.settings.public();
         return json(response, { docker: await dockerHealth(), model: { configured: settings.configured, protocol: settings.protocol, model: settings.model }, version: '0.1.0' });
@@ -131,13 +138,15 @@ export function createApp(workbench: Workbench) {
       response.writeHead(200, { 'Content-Type': contentTypes[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
       response.end(method === 'HEAD' ? undefined : content);
     } catch (error) {
+      if (error instanceof HttpError && error.status === 429) response.setHeader('Retry-After', '60');
       if (!response.headersSent) json(response, { error: errorMessage(error) }, error instanceof HttpError ? error.status : 500);
       else response.end();
     }
   });
   server.on('upgrade', (request, socket, head) => {
     try {
-      checkRequest(request);
+      access.checkRequest(request); access.require(request);
+      access.protectConnection(request, socket, () => socket.destroy());
       const url = new URL(request.url || '/', 'http://local');
       const match = /^\/api\/tasks\/([a-f\d-]{36})\/(desktop\/websockify|terminal)$/.exec(url.pathname);
       if (!match) throw new HttpError(404, '接口不存在');
@@ -146,6 +155,6 @@ export function createApp(workbench: Workbench) {
       proxyUpgrade(request, socket, head, sandbox.url, '/desktop/websockify', sandbox.token);
     } catch { socket.end('HTTP/1.1 403 Forbidden\r\n\r\n'); }
   });
-  server.on('close', () => terminals.close());
+  server.on('close', () => { access.close(); terminals.close(); });
   return server;
 }

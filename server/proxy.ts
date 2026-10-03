@@ -7,9 +7,11 @@ export function proxyHttp(request: IncomingMessage, response: ServerResponse, ta
   // noVNC's Python HTTP server closes each asset response. Avoid reusing a
   // socket during that close, which can interrupt the next module request.
   const headers = { ...request.headers, host: url.host, connection: 'close' };
+  delete headers.cookie;
   if (token) headers.authorization = `Bearer ${token}`;
   const upstream = httpRequest(url, { method: request.method, headers, agent: false }, incoming => {
-    response.writeHead(incoming.statusCode || 502, { ...incoming.headers, 'Cache-Control': 'no-store' });
+    const forwarded = { ...incoming.headers }; delete forwarded['set-cookie'];
+    response.writeHead(incoming.statusCode || 502, { ...forwarded, 'Cache-Control': 'no-store' });
     incoming.pipe(response);
   });
   upstream.setTimeout(120_000, () => upstream.destroy(new Error('沙盒响应超时')));
@@ -24,11 +26,12 @@ export function proxyHttp(request: IncomingMessage, response: ServerResponse, ta
 export function proxyUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer, target: string, path: string, token?: string) {
   const url = new URL(path, target);
   const headers = { ...request.headers, host: url.host };
+  delete headers.cookie;
   if (token) headers.authorization = `Bearer ${token}`;
   const upstream = httpRequest(url, { headers });
   upstream.on('upgrade', (response, remote, remoteHead) => {
     const lines = [`HTTP/1.1 ${response.statusCode} ${response.statusMessage}`];
-    for (const [key, value] of Object.entries(response.headers)) if (value) lines.push(`${key}: ${Array.isArray(value) ? value.join(', ') : value}`);
+    for (const [key, value] of Object.entries(response.headers)) if (value && key !== 'set-cookie') lines.push(`${key}: ${Array.isArray(value) ? value.join(', ') : value}`);
     socket.write(`${lines.join('\r\n')}\r\n\r\n`);
     if (remoteHead.length) socket.write(remoteHead);
     if (head.length) remote.write(head);
