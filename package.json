@@ -20,7 +20,9 @@
     "doctor": "node --import tsx scripts/doctor.ts",
     "pi:packages": "node --import tsx scripts/pi-packages.ts",
     "test:access": "npm run build && node --import tsx scripts/verify-access.ts",
-    "backup": "node dist/scripts/backup.js"
+    "backup": "node dist/scripts/backup.js",
+    "notices": "node --import tsx scripts/notices.ts",
+    "notices:check": "node --import tsx scripts/notices.ts --check"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "1.0.0",
