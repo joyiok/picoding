@@ -169,7 +169,11 @@ npm run doctor
 npm run test:integration
 ```
 
-`verify` 执行全部测试和生产构建；`doctor` 检查 Node、Docker、任务镜像及模型代理配置。`test:integration` 先构建，再启动真正的 `node dist/server/index.js`，用临时数据目录、虚构凭证和本地确定性 HTTP SSE 模型服务，驱动真实 Docker、Chromium 和 PTY；无需用户模型凭证。
+`verify` 执行全部测试和生产构建；`doctor` 检查 Node、Docker、任务镜像及模型代理配置。`test:integration` 先构建，再启动真正的 `node dist/server/index.js`，用临时数据目录、虚构凭证和本地确定性 HTTP SSE 模型服务，驱动真实 Docker、Chromium 和 PTY；无需用户模型凭证。它还会正常停机，通过编译后的备份 CLI 备份并恢复真实项目卷，验证二进制、链接、Git、模型设置、pi 历史和浏览器配置；只删除测试任务的自有卷。
+
+`npm run test:browser` 使用真实 Chromium 和编译服务，验证登录、搜索/重命名、刷新后的消息草稿、登录失效时弹窗恢复及手机布局；使用明确标注的停止任务和虚构配置，不调用外部模型。首次运行前执行 `node node_modules/playwright-core/cli.js install --with-deps chromium`，也可用 `CHROMIUM_PATH` 指向已安装的 Chromium。
+
+GitHub Actions 的 Release verification 在 PR、main 更新和手动触发时执行最低 Node 22.19 回归、Node 24 构建、访问验收、实际浏览器及 Docker/备份恢复。工作流只读仓库、无模型凭证，第三方 Actions 固定完整提交。首次远程运行结果尚待确认；合并应等待两项检查通过。
 
 任务整理与会话恢复迭代的 `npm run verify` 完成 **92/92 测试和生产构建**。新增任务重命名的持久化/输入/停机保护、搜索保留草稿、重命名成功/失败，以及会话过期暂停弹窗并保留未保存字段的回归；编译控制服务验证重命名权限及重启恢复。本轮页面测试使用 Happy DOM 和明确的模拟 API，实际浏览器布局尚待验收。
 

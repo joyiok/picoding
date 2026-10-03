@@ -1,0 +1,60 @@
+name: Release verification
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PICODING_MODEL_PROXY: none
+  PICODING_SANDBOX_PROXY: none
+
+jobs:
+  minimum-node:
+    name: Minimum Node 22.19
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22.19.0
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - run: node --import tsx scripts/verify-access.ts
+
+  production:
+    name: Production, browser and Docker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - run: node --import tsx scripts/verify-access.ts
+      - name: Install the browser pinned by playwright-core
+        run: node node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Check desktop and mobile interaction
+        run: node --import tsx scripts/verify-browser.ts
+      - name: Build the task image
+        run: npm run sandbox:build
+      - name: Check real task execution, recovery and backup
+        run: node --import tsx scripts/verify-sandbox.ts
