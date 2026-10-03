@@ -60,6 +60,10 @@ Confirmed: model capabilities are editable context capacity (contextWindow), max
 
 Capabilities persist locally and restore after a backend restart. Missing legacy context/output fields are backfilled with 128000 / 16384 respectively. A missing image flag is enabled when the legacy settings have a model ID, preserving the previous behavior, and off otherwise. When image input is disabled, the agent uses page structure and text; current browser screenshots and historical images are filtered from model requests while page text and historical text are preserved.
 
+Confirmed: Linux/WSL deployments use a kernel flock held by a monitored child process to coordinate the control server and maintenance commands sharing a data directory. A host crash releases the lock without stale-lock cleanup. Native Windows local mode remains available; backup maintenance requires WSL.
+
+The compiled backup CLI requires a stopped workbench and inactive project volumes. It archives the entire control-data directory and each existing full Docker workspace volume, including Git and Chromium profile data, with a versioned SHA-256 manifest. Restore validates checksums, archive paths/links and task IDs, then accepts only an empty target directory and absent same-ID volumes. Failure rolls back newly created volumes and reports cleanup failures; existing data is never intentionally overwritten. External environment files, environment-only credentials and out-of-directory local package sources require separate migration. One archive expands to at most 100 GiB. The deployment guide includes systemd/Caddy templates, setup, upgrades and recovery; actual target-host service/TLS and Docker-volume acceptance remain pending.
+
 ## Brand Commitments
 The user explicitly references Manus for the task computer, preinstalled browser and observable workflow. PiCoding is the provisional project name derived from the workspace directory, not a confirmed brand.
 

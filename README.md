@@ -4,7 +4,7 @@
 
 ## 启动
 
-需要 Node.js **22.19 或更新版本**、npm 和正在运行的 Docker Engine / Docker Desktop。
+需要 Node.js **22.19 或更新版本**、npm 和正在运行的 Docker Engine / Docker Desktop。Linux/WSL 上还需要 util-linux 提供的 `flock`，用于防止服务与备份同时写入数据。
 
 ```bash
 npm ci
@@ -168,6 +168,8 @@ npm run test:integration
 ```
 
 `verify` 执行全部测试和生产构建；`doctor` 检查 Node、Docker、任务镜像及模型代理配置。`test:integration` 先构建，再启动真正的 `node dist/server/index.js`，用临时数据目录、虚构凭证和本地确定性 HTTP SSE 模型服务，驱动真实 Docker、Chromium 和 PTY；无需用户模型凭证。
+
+部署维护迭代的 `npm run verify` 完成 **86/86 测试和生产构建**。新增数据目录锁、崩溃后锁释放、完整备份与恢复回归；编译后的备份 CLI 已验证控制服务数据往返恢复和拒绝覆盖。项目卷测试使用明确的文件系统适配器，实际 Docker 卷传输、systemd 和 Caddy 目标环境验收仍待执行。备份、恢复和 Linux 服务管理见 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
 访问保护迭代的 `npm run verify` 完成 **77/77 测试和生产构建**。新增真实 HTTP/WebSocket 的登录、来源保护、Cookie 隔离、会话退出/过期回归测试，以及 React 登录重试和草稿恢复测试。`npm run test:access` 验证真实编译控制服务的登录静态页、受保护 API、SSE 退出和重启；以虚构密码和临时数据运行，不验证实际 HTTPS 终止、Docker 或浏览器布局。
 

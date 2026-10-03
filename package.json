@@ -19,7 +19,8 @@
     "sandbox:build": "node --import tsx scripts/build-sandbox.ts",
     "doctor": "node --import tsx scripts/doctor.ts",
     "pi:packages": "node --import tsx scripts/pi-packages.ts",
-    "test:access": "npm run build && node --import tsx scripts/verify-access.ts"
+    "test:access": "npm run build && node --import tsx scripts/verify-access.ts",
+    "backup": "node dist/scripts/backup.js"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "1.0.0",
@@ -31,6 +32,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-markdown": "10.1.0",
+    "tar": "7.5.22",
     "typebox": "1.3.27",
     "undici": "8.10.2",
     "ws": "8.21.0"

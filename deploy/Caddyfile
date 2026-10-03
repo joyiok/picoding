@@ -1,0 +1,5 @@
+# Replace this hostname and PICODING_PUBLIC_ORIGIN with the same real HTTPS origin.
+coding.example.com {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:4310
+}
