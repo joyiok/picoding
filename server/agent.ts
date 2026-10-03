@@ -138,7 +138,10 @@ export async function createPiSession(id: string, sandbox: Sandbox, settings: Se
   const extensions = loader.getExtensions();
   if (extensions.errors.length) throw new Error(`pi 扩展加载失败：${extensions.errors.map(error => error.error).join('; ')}。请在 Skills 和插件中停用或修复对应包。`);
   const extensionTools = extensions.extensions.flatMap(extension => [...extension.tools.keys()]);
-  const manager = SessionManager.continueRecent(directory, directory);
+  // Each task owns its session directory. Restore its latest session even when a backup moved the data root.
+  const recent = (await SessionManager.listAll(directory, undefined, signal))[0];
+  signal?.throwIfAborted();
+  const manager = recent ? SessionManager.open(recent.path, directory, directory) : SessionManager.create(directory, directory);
   const { session } = await createAgentSession({ cwd: directory, agentDir: directory, modelRuntime: runtime, model, settingsManager, resourceLoader: loader, sessionManager: manager, tools: [...new Set([...tools.map(tool => tool.name), ...extensionTools])], customTools: tools });
   session.subscribe(onEvent);
   try {

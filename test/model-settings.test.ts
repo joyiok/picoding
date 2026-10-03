@@ -2,7 +2,7 @@ import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SettingsStore } from '../server/settings.js';
@@ -138,4 +138,43 @@ test('real pi sessions use each selected supplier and model while preserving con
   assert.deepEqual(requests.map(request => new URL(request.url, base).pathname), ['/first/v1/chat/completions', '/first/v1/chat/completions', '/second/v1/chat/completions', '/third/v1/messages', '/first/v1/chat/completions']);
   assert.deepEqual(requests.map(request => request.key), ['Bearer ' + first.apiKey, 'Bearer ' + first.apiKey, 'Bearer ' + second.apiKey, 'third-fixture-key', 'Bearer ' + first.apiKey]);
   assert.equal(requests[0].body.max_completion_tokens ?? requests[0].body.max_tokens, 2048); assert.equal(requests[1].body.max_completion_tokens ?? requests[1].body.max_tokens, 4096);
+});
+
+test('real pi sessions retain conversation when restored data moves to a different directory', { timeout: 20_000 }, async t => {
+  const { directory, settings } = await setup(t, false);
+  const restoredDirectory = directory + '-restored';
+  const requests: Record<string, unknown>[] = [];
+  const workbenches: Workbench[] = [];
+  const provider = createServer(async (request, response) => {
+    const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    const body = JSON.parse(Buffer.concat(chunks).toString()); requests.push(body);
+    textReply(response, 'openai', body.model, 'Relocation fixture reply ' + requests.length);
+  });
+  t.after(async () => {
+    for (const workbench of workbenches) await workbench.shutdown();
+    provider.closeAllConnections(); provider.close();
+    await rm(directory, { recursive: true, force: true });
+    await rm(restoredDirectory, { recursive: true, force: true });
+  });
+  await new Promise<void>(resolve => provider.listen(0, '127.0.0.1', resolve));
+  await settings.update({ ...first, baseUrl: `http://127.0.0.1:${(provider.address() as AddressInfo).port}/v1` });
+  // The official SDK and persisted session files are real; only the task sandbox is an adapter.
+  const sandbox = { url: 'http://fixture.invalid', token: 'fixture', async start() {}, async stop() {}, async destroy() {}, async request<T>() { return { exitCode: 0, output: '' } as T; } };
+  const store = new TaskStore(join(directory, 'tasks')); await store.load();
+  const original = new Workbench(store, settings, () => sandbox); workbenches.push(original);
+  const task = await original.create('Relocation fixture'); await original.start(task.id);
+  await original.send(task.id, 'Remember the original relocation fixture prompt.');
+  assert.equal(task.error, undefined);
+  await original.shutdown();
+  await rename(directory, restoredDirectory);
+  const restoredSettings = new SettingsStore(restoredDirectory); await restoredSettings.load();
+  const restoredStore = new TaskStore(join(restoredDirectory, 'tasks')); await restoredStore.load();
+  const restored = new Workbench(restoredStore, restoredSettings, () => sandbox); workbenches.push(restored);
+  await restored.start(task.id);
+  await restored.send(task.id, 'Continue the relocation fixture after restoring.');
+  assert.equal(restoredStore.get(task.id).error, undefined);
+  assert.equal(requests.length, 2);
+  assert.match(JSON.stringify(requests[1]), /Remember the original relocation fixture prompt/);
+  assert.match(JSON.stringify(requests[1]), /Relocation fixture reply 1/);
+  assert.match(JSON.stringify(requests[1]), /Continue the relocation fixture after restoring/);
 });

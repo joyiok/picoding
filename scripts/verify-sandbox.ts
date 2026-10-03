@@ -3,7 +3,7 @@ import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createServer } from 'node:http';
 import { createServer as tcpServer, type AddressInfo } from 'node:net';
-import { mkdtemp, writeFile, readFile, stat, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, stat, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
@@ -114,12 +114,23 @@ try {
   const archiveResponse = await fetch(base + '/api/tasks/' + task.id + '/archive'); assert.equal(archiveResponse.status, 200);
   const archive = join(directory, 'project.tar.gz'); await writeFile(archive, Buffer.from(await archiveResponse.arrayBuffer()));
   const { stdout: entries } = await run('tar', ['-tzf', archive]); assert.match(entries, /\.\/index\.html/); assert.equal(/\.\/(?:\.git|\.picoding|node_modules)\//.test(entries), false); report('project export');
-  const conflicting = spawn(process.execPath, ['dist/server/index.js'], { env: environment, stdio: ['ignore', 'ignore', 'pipe'] });
-  let conflictError = ''; conflicting.stderr.on('data', value => conflictError += value.toString());
-  const conflictTimer = setTimeout(() => conflicting.kill('SIGKILL'), 5000);
-  const conflictCode = await new Promise<number | null>(resolve => conflicting.on('exit', resolve)); clearTimeout(conflictTimer);
-  assert.equal(conflictCode, 1); assert.match(conflictError, /EADDRINUSE/); assert.equal((await api<Task>('/tasks/' + task.id)).status, 'ready');
-  assert.equal((await api<FileContent>('/tasks/' + task.id + '/file?path=index.html')).content, html); report('occupied-port startup leaves the running task untouched');
+  const portConflictData = join(maintenance, 'port-conflict');
+  await mkdir(join(portConflictData, 'tasks'), { recursive: true, mode: 0o700 });
+  // Give the separate instance an interrupted task so a port failure must precede container recovery.
+  await writeFile(join(portConflictData, 'tasks', task.id + '.json'), await readFile(join(directory, 'tasks', task.id + '.json')), { mode: 0o600 });
+  for (const [data, expected, check] of [
+    [directory, /正在使用这个数据目录/, 'data-directory startup conflict leaves the running task untouched'],
+    [portConflictData, /EADDRINUSE/, 'occupied-port startup leaves the running task untouched'],
+  ] as const) {
+    const conflicting = spawn(process.execPath, ['dist/server/index.js'], { env: { ...environment, PICODING_DATA_DIR: data }, stdio: ['ignore', 'ignore', 'pipe'] });
+    let conflictError = ''; conflicting.stderr.on('data', value => conflictError += value.toString());
+    const conflictTimer = setTimeout(() => conflicting.kill('SIGKILL'), 5000);
+    const conflictCode = await new Promise<number | null>(resolve => conflicting.on('exit', resolve)); clearTimeout(conflictTimer);
+    assert.equal(conflictCode, 1); assert.match(conflictError, expected);
+    assert.equal((await api<Task>('/tasks/' + task.id)).status, 'ready');
+    assert.equal((await run('docker', ['inspect', '--format', '{{.State.Running}}', 'picoding-' + task.id])).stdout.trim(), 'true');
+    assert.equal((await api<FileContent>('/tasks/' + task.id + '/file?path=index.html')).content, html); report(check);
+  }
   await stop(); await launch();
   const restored = await api<Task>('/tasks/' + task.id); assert.equal(restored.status, 'stopped'); assert.equal(restored.tools.length, 4);
   await api('/tasks/' + task.id + '/start', {}); await ready(); assert.equal((await api<FileContent>('/tasks/' + task.id + '/file?path=index.html')).content, html);
@@ -139,11 +150,13 @@ try {
   const fixture = await api<{ output: string }>('/tasks/' + task.id + '/command', { command: 'python3 -c "from pathlib import Path;Path(\'fixture.bin\').write_bytes(bytes(range(256)))" && ln -s index.html fixture-link && git rev-parse --is-inside-work-tree' }); assert.match(fixture.output, /true/);
   await stop();
   const backup = join(maintenance, 'backup'), restoredData = join(maintenance, 'restored');
+  const settingsBeforeBackup = await readFile(join(directory, 'settings.json'), 'utf8');
+  assert.ok(settingsBeforeBackup.includes(key), 'The backup fixture must contain its provider credential');
   const created = await run(process.execPath, ['dist/scripts/backup.js', 'create', backup], { env: environment }); assert.equal(created.stdout.includes(key), false);
   await assert.rejects(run(process.execPath, ['dist/scripts/backup.js', 'restore', backup], { env: { ...environment, PICODING_DATA_DIR: restoredData } }), /同名项目卷/);
   await run('docker', ['volume', 'rm', 'picoding-work-' + task.id]);
   const restoredBackup = await run(process.execPath, ['dist/scripts/backup.js', 'restore', backup], { env: { ...environment, PICODING_DATA_DIR: restoredData } }); assert.equal(restoredBackup.stdout.includes(key), false);
-  assert.equal(JSON.parse(await readFile(join(restoredData, 'settings.json'), 'utf8')).apiKey, key); assert.equal((await stat(join(restoredData, 'settings.json'))).mode & 0o777, 0o600);
+  assert.equal(await readFile(join(restoredData, 'settings.json'), 'utf8'), settingsBeforeBackup); assert.equal((await stat(join(restoredData, 'settings.json'))).mode & 0o777, 0o600);
   environment.PICODING_DATA_DIR = restoredData; await launch();
   assert.equal((await api<Task>('/tasks/' + task.id)).status, 'stopped');
   await api('/tasks/' + task.id + '/start', {}); await ready(); assert.equal((await api<FileContent>('/tasks/' + task.id + '/file?path=index.html')).content, html);
