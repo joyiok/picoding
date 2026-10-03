@@ -1,5 +1,9 @@
 export class ApiError extends Error { constructor(message: string, readonly status: number) { super(message); } }
 
+function unauthorized(status: number, path: string) {
+  if (status === 401 && !path.startsWith('/auth')) window.dispatchEvent(new window.Event('picoding:unauthorized'));
+}
+
 export async function api<T>(path: string, body?: unknown, method?: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method: method || (body === undefined ? 'GET' : 'POST'),
@@ -8,6 +12,7 @@ export async function api<T>(path: string, body?: unknown, method?: string, sign
     signal,
   });
   const data = await response.json();
+  unauthorized(response.status, path);
   if (!response.ok) throw new ApiError(data.error || `请求失败 (${response.status})`, response.status);
   return data as T;
 }
@@ -20,5 +25,6 @@ export async function uploadFile(id: string, path: string, file: File, signal?: 
     method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file, signal,
   });
   const data = await response.json();
+  unauthorized(response.status, '/upload');
   if (!response.ok) throw new ApiError(data.error || '文件上传失败', response.status);
 }
