@@ -20,7 +20,13 @@ COPY server ./server
 COPY sandbox ./sandbox
 COPY scripts/doctor.ts ./scripts/doctor.ts
 RUN npx tsc -p tsconfig.server.json
-RUN chmod +x /opt/picoding/sandbox/entrypoint.sh
+# COPY retains host permissions; updater builds use a private umask.
+# Make the installed application readable by the non-root runtime user.
+RUN chmod a+r /opt/picoding/package.json /opt/picoding/package-lock.json \
+      /opt/picoding/.npmrc /opt/picoding/tsconfig.json /opt/picoding/tsconfig.server.json \
+    && chmod -R a+rX /opt/picoding/shared /opt/picoding/server \
+      /opt/picoding/sandbox /opt/picoding/scripts \
+    && chmod 0755 /opt/picoding/sandbox/entrypoint.sh
 
 USER 1000:1000
 WORKDIR /workspace
