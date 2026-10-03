@@ -3,6 +3,7 @@ import { SettingsStore } from '../server/settings.js';
 import { networkDispatcher } from '../server/network.js';
 import { AccessControl } from '../server/access.js';
 import { config } from '../server/config.js';
+import { loadAccessCredential } from '../server/access-password.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -16,7 +17,7 @@ let proxyReady = true;
 try { const dispatcher = networkDispatcher(); await dispatcher.destroy(); }
 catch (error) { proxyReady = false; console.error(error instanceof Error ? error.message : String(error)); }
 let accessReady = true, accessMessage = '仅本机访问', loginEnabled = false;
-try { const access = new AccessControl(config); loginEnabled = access.required; accessMessage = access.publicOrigin ? 'HTTPS 私有部署，需反向代理终止 TLS' : loginEnabled ? '本机访问已启用密码' : accessMessage; }
+try { const access = new AccessControl({ ...config, credential: config.password ? undefined : await loadAccessCredential(config.dataDir) }); loginEnabled = access.required; accessMessage = access.publicOrigin ? 'HTTPS 私有部署，需反向代理终止 TLS' : loginEnabled ? '本机访问已启用密码' : accessMessage; }
 catch (error) { accessReady = false; accessMessage = error instanceof Error ? error.message : String(error); }
 let backupReady = process.platform !== 'win32';
 try { await promisify(execFile)('flock', ['--version']); } catch { backupReady = false; }

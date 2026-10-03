@@ -1,21 +1,34 @@
 import assert from 'node:assert/strict';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { createServer, request as httpRequest } from 'node:http';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
+import { promisify } from 'node:util';
 
 // Real compiled control service with private fixture data; no TLS, Docker or model is simulated as real.
 const directory = await mkdtemp(join(tmpdir(), 'picoding-production-access-'));
 const reservation = createServer(); await new Promise<void>(resolve => reservation.listen(0, '127.0.0.1', resolve));
 const port = (reservation.address() as { port: number }).port; await new Promise<void>(resolve => reservation.close(() => resolve()));
 const base = `http://127.0.0.1:${port}`, origin = 'https://workbench.example.invalid';
-const password = 'production-fixture-password-only', id = randomUUID(), now = new Date().toISOString();
+const id = randomUUID(), now = new Date().toISOString();
+let password = '';
 let child: ChildProcess | undefined, output = '';
+const run = promisify(execFile);
+async function passwordCommand(action: string) {
+  return run(process.execPath, ['dist/scripts/access.js', action], { env: { ...process.env, PICODING_DATA_DIR: directory, PICODING_ACCESS_PASSWORD: '' } });
+}
+async function configurePassword(action: string) {
+  const result = await passwordCommand(action), match = result.stdout.match(/访问密码：(\S+)/);
+  assert.ok(match, 'Password CLI did not report its generated password');
+  password = match[1];
+  assert.equal((await readFile(join(directory, 'access.json'), 'utf8')).includes(password), false);
+  assert.equal((await stat(join(directory, 'access.json'))).mode & 0o777, 0o600);
+}
 async function launch() {
-  child = spawn(process.execPath, ['dist/server/index.js'], { env: { ...process.env, PICODING_HOST: '127.0.0.1', PICODING_PORT: String(port), PICODING_DATA_DIR: directory, PICODING_PUBLIC_ORIGIN: origin, PICODING_ACCESS_PASSWORD: password, PICODING_API_PROTOCOL: 'openai', PICODING_API_BASE_URL: '', PICODING_MODEL: '', OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  child = spawn(process.execPath, ['dist/server/index.js'], { env: { ...process.env, PICODING_HOST: '127.0.0.1', PICODING_PORT: String(port), PICODING_DATA_DIR: directory, PICODING_PUBLIC_ORIGIN: origin, PICODING_ACCESS_PASSWORD: '', PICODING_API_PROTOCOL: 'openai', PICODING_API_BASE_URL: '', PICODING_MODEL: '', OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout!.on('data', data => { output += data.toString(); }); child.stderr!.on('data', data => { output += data.toString(); });
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
@@ -47,7 +60,12 @@ const report = (check: string) => console.log(JSON.stringify({ check, result: 'p
 try {
   await mkdir(join(directory, 'tasks'));
   await writeFile(join(directory, 'tasks', `${id}.json`), JSON.stringify({ id, title: 'Temporary private access fixture', status: 'stopped', createdAt: now, updatedAt: now, messages: [], tools: [], terminal: [] }), { mode: 0o600 });
+  await configurePassword('init');
+  assert.deepEqual(JSON.parse((await passwordCommand('status')).stdout), { loginEnabled: true, source: 'file' });
+  await assert.rejects(passwordCommand('init'), /已初始化/);
   await launch();
+  await assert.rejects(passwordCommand('reset'), /正在使用/);
+  report('compiled password initialization stores only a hash and refuses live-service changes');
   const html = await api('/'); assert.equal(html.status, 200); assert.match(html.headers['content-type']!, /text\/html/);
   assert.equal((await api('/', 'HEAD')).text, '');
   for (const [, asset] of html.text.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)) assert.equal((await api(asset)).status, 200);
@@ -75,4 +93,17 @@ try {
   report('authenticated task renaming persists through production restart');
   assert.equal(output.includes(password), false);
   report('graceful restart invalidates sessions without exposing credentials');
+  const oldPassword = password;
+  await stop(); await configurePassword('reset'); await launch();
+  assert.equal((await api('/api/auth/login', 'POST', { password: oldPassword })).status, 401);
+  assert.equal((await api('/api/tasks', 'GET', undefined, freshCookie)).status, 401);
+  assert.equal((await api('/api/auth/login', 'POST', { password })).status, 200);
+  assert.equal(output.includes(oldPassword) || output.includes(password), false);
+  report('compiled password rotation rejects old passwords and sessions after restart');
+  await stop(); await writeFile(join(directory, 'access.json'), 'private-corrupt-credential-fixture');
+  await assert.rejects(launch(), /访问密码文件无效/);
+  await configurePassword('reset'); await launch();
+  assert.equal((await api('/api/auth/login', 'POST', { password })).status, 200);
+  assert.equal(output.includes('private-corrupt-credential-fixture'), false);
+  report('corrupt credentials prevent startup and release the data lock for offline recovery');
 } finally { await stop(); await rm(directory, { recursive: true, force: true }); }

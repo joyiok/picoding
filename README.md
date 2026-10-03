@@ -31,6 +31,8 @@ npm start
 
 此时由编译后的 Node 服务同时提供网页和 API，打开 **http://127.0.0.1:4310**；修改 `PICODING_PORT` 后使用相应端口。默认仅本机访问。私有远程部署支持访问密码登录，每套实例提供一个共享工作区，不提供多租户账户。部署说明见 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
+需要登录保护时，构建后在服务停止状态运行 `npm run access -- init`，保存命令输出的随机访问密码，再启动服务。后端只在数据目录的 `access.json` 保存带随机盐的 scrypt 哈希。`npm run access -- status` 查看鉴权状态；停止服务后运行 `npm run access -- reset` 生成新密码，重启后旧密码和会话失效。已有 `PICODING_ACCESS_PASSWORD` 环境变量配置继续生效并优先于密码文件，使用该方式时通过环境文件修改密码。
+
 ## 使用
 
 1. 在欢迎页点击「打开已有项目或空白工作区」，创建空白工作区，或导入公开 Git 仓库。使用 HTTP(S) 克隆地址，可选分支；留空使用默认分支。准备项目、手动编辑和运行命令无需模型凭证，但需要 Docker 和任务镜像就绪。
@@ -122,9 +124,9 @@ pi 在本机控制服务中运行。工作台提供的 sandbox、浏览器操作
 | --- | --- | --- |
 | `PICODING_HOST` | `127.0.0.1` | 默认本机监听；远程监听 `0.0.0.0` 必须配置访问保护 |
 | `PICODING_PUBLIC_ORIGIN` | 未配置 | 远程访问的 HTTPS 来源地址，不含路径 |
-| `PICODING_ACCESS_PASSWORD` | 未配置 | 私有工作台访问密码，12–256 字符；远程部署必须设置 |
+| `PICODING_ACCESS_PASSWORD` | 未配置 | 可选环境变量访问密码，12–256 字符，优先于 access.json；也可用 access init 初始化 |
 | `PICODING_PORT` | `4310` | 控制服务端口，1–65535 的整数；Vite 自动同步代理目标 |
-| `PICODING_DATA_DIR` | `.picoding` | 任务记录、pi 会话和模型设置 |
+| `PICODING_DATA_DIR` | `.picoding` | 任务记录、pi 会话、模型设置和访问密码哈希 |
 | `PICODING_SANDBOX_IMAGE` | `picoding-sandbox:local` | 沙盒镜像 |
 | `PICODING_MAX_TASKS` | `3` | 同时运行的任务环境数量，必须为正整数 |
 | `PICODING_SANDBOX_MEMORY` | `2g` | 单个任务的内存限额 |

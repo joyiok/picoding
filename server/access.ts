@@ -1,10 +1,11 @@
-import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { EventEmitter } from 'node:events';
 import { checkOrigin, HttpError } from './http.js';
+import { hashAccessPassword, parseAccessCredential, type AccessCredential } from './access-password.js';
 
 const sessionLifetime = 8 * 60 * 60 * 1000;
-export interface AccessOptions { host: string; port: number; publicOrigin?: string; password?: string; }
+export interface AccessOptions { host: string; port: number; publicOrigin?: string; password?: string; credential?: AccessCredential; }
 export interface AccessStatus { required: boolean; authenticated: boolean; expiresAt?: number; }
 interface Session { expiresAt: number; disconnect: Set<() => void>; }
 
@@ -14,7 +15,7 @@ export class AccessControl {
   readonly cookieName: string;
   private readonly hosts: Set<string>;
   private readonly origins: Set<string>;
-  private readonly salt = randomBytes(16);
+  private readonly salt: Buffer;
   private readonly passwordHash?: Promise<Buffer>;
   private readonly sessions = new Map<string, Session>();
   private attempts = 0;
@@ -30,15 +31,18 @@ export class AccessControl {
       if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error('PICODING_PUBLIC_ORIGIN 必须是 HTTPS 来源地址，不含路径、凭证或查询参数');
       this.publicOrigin = url.origin;
     }
-    if ((options.host === '0.0.0.0' || this.publicOrigin) && (!this.publicOrigin || !options.password)) throw new Error('远程部署必须同时设置 PICODING_PUBLIC_ORIGIN 和 PICODING_ACCESS_PASSWORD');
-    this.required = Boolean(options.password);
+    const credential = options.password ? undefined : options.credential ? parseAccessCredential(options.credential) : undefined;
+    if ((options.host === '0.0.0.0' || this.publicOrigin) && (!this.publicOrigin || (!options.password && !credential))) throw new Error('远程部署必须设置 PICODING_PUBLIC_ORIGIN，并配置访问密码（access init 或 PICODING_ACCESS_PASSWORD）');
+    this.required = Boolean(options.password || credential);
+    this.salt = credential ? Buffer.from(credential.salt, 'hex') : randomBytes(16);
     this.cookieName = this.publicOrigin ? '__Host-picoding_session' : 'picoding_session';
     this.hosts = new Set([`127.0.0.1:${options.port}`, `localhost:${options.port}`, ...(this.publicOrigin ? [new URL(this.publicOrigin).host] : [])]);
     this.origins = new Set(this.publicOrigin ? [this.publicOrigin] : [`http://127.0.0.1:${options.port}`, `http://localhost:${options.port}`, 'http://127.0.0.1:5173', 'http://localhost:5173']);
     if (options.password) this.passwordHash = this.hash(options.password);
+    else if (credential) this.passwordHash = Promise.resolve(Buffer.from(credential.hash, 'hex'));
   }
 
-  private hash(password: string) { return new Promise<Buffer>((resolve, reject) => scrypt(password, this.salt, 32, { N: 32768, maxmem: 64 * 1024 * 1024 }, (error, key) => error ? reject(error) : resolve(key))); }
+  private hash(password: string) { return hashAccessPassword(password, this.salt); }
 
   checkRequest(request: IncomingMessage) {
     if (!this.hosts.has(request.headers.host || '')) throw new HttpError(403, '请通过工作台配置的地址访问');

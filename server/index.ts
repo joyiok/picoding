@@ -7,9 +7,12 @@ import { configureNetwork } from './network.js';
 import { dockerHealth } from './docker.js';
 import { AccessControl } from './access.js';
 import { acquireDataLease } from './data-lease.js';
+import { loadAccessCredential } from './access-password.js';
 
-const access = new AccessControl(config);
 const lease = process.platform === 'win32' ? undefined : await acquireDataLease(config.dataDir);
+let access: AccessControl;
+try { access = new AccessControl({ ...config, credential: config.password ? undefined : await loadAccessCredential(config.dataDir) }); }
+catch (error) { await lease?.release(); throw error; }
 const network = configureNetwork();
 const store = new TaskStore(); const settings = new SettingsStore();
 await store.load(); await settings.load();

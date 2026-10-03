@@ -8,17 +8,32 @@
 
 ## HTTPS 远程访问
 
-部署到自己的服务器，通过 HTTPS 反向代理访问。保持控制服务监听本机地址，并在 `.env` 中同时设置：
+部署到自己的服务器，通过 HTTPS 反向代理访问。保持控制服务监听本机地址，并在 `.env` 中设置：
 
 ```dotenv
 PICODING_HOST=127.0.0.1
 PICODING_PORT=4310
 PICODING_PUBLIC_ORIGIN=https://coding.example.com
-PICODING_ACCESS_PASSWORD=<替换为随机访问密码>
 PICODING_DATA_DIR=/var/lib/picoding
 ```
 
-访问密码长度为 12–256 字符；可用 `node -e "console.log(require('node:crypto').randomBytes(24).toString('base64url'))"` 生成。`.env` 包含秘密，应只允许服务管理员读取，不提交到 Git。
+先运行 `npm run build`，在服务停止时，以服务用户初始化独立的工作台访问密码：
+
+```bash
+PICODING_DATA_DIR=/var/lib/picoding npm run access -- init
+```
+
+命令输出随机密码一次，请保存到密码管理器。后端仅在 `<PICODING_DATA_DIR>/access.json` 保存带随机盐的 scrypt 哈希，权限 `0600`；文件损坏会阻止服务启动。重复初始化不会覆盖已有密码。此密码与服务器 SSH 登录密码分别管理。
+
+也可设置 `PICODING_ACCESS_PASSWORD` 为 12–256 字符的密码；显式环境变量优先于密码文件。使用该方式时，请通过环境文件修改密码并重启服务，密码管理命令会拒绝改写。`.env` 包含秘密，应只允许服务管理员读取，不提交到 Git。
+
+可运行 `npm run access -- status` 查看是否启用鉴权及配置来源，不输出密码或哈希。重置文件密码需先正常停止服务，使用同一服务用户和数据目录运行：
+
+```bash
+PICODING_DATA_DIR=/var/lib/picoding npm run access -- reset
+```
+
+启动服务后仅新密码有效，旧登录会话失效。密码管理与服务共用数据目录锁，运行中的服务会阻止初始化或重置。Linux/WSL 的维护命令需要 util-linux `flock`。完整备份包含密码哈希文件，恢复后沿用原工作台密码。
 
 公网地址只接受 HTTPS 来源地址，不接受路径、用户名、查询参数或通配来源。没有同时配置来源和密码时，不允许远程监听。反向代理需要保留原始 `Host`，支持 WebSocket Upgrade，并关闭 SSE 缓冲；不采用客户端提供的 `X-Forwarded-Host` 扩大来源范围。
 
@@ -84,10 +99,10 @@ sudo systemctl start picoding
 
 恢复先验证清单、归档校验值、路径/链接安全和任务记录一致性，再创建项目卷和提交控制服务数据。已有数据或同名卷会让命令退出，保留原项目。恢复返回失败时，工具会清理本次新建的卷；Docker 清理失败会明确报错。若进程被强制杀死或机器断电，可能留下未完成的目录或新卷，需检查后再恢复；工具仍会拒绝覆盖它们。只有清单写入成功的备份目录才算完成备份。单个归档解压后上限为 100 GiB。恢复后的任务保持停止状态，登录后点击「启动环境」继续。
 
-升级前停止服务、建立完整备份，再更新到确认的 Git 提交，执行 `npm ci`、`npm run build` 和对应版本的 `sandbox:build`，之后启动并验收。记录旧 Git 提交和旧镜像名供回滚使用。本轮没有修改任务或设置格式；未来的数据迁移需要遵循对应版本的升级说明。不要把代码回滚当作项目数据恢复。
+升级前停止服务、建立完整备份，再更新到确认的 Git 提交，执行 `npm ci`、`npm run build` 和对应版本的 `sandbox:build`，之后启动并验收。记录旧 Git 提交和旧镜像名供回滚使用。当前模型设置采用多供应商格式，旧单模型配置首次保存或切换时会迁移；旧版本不能直接读取新格式。回滚至不支持 `access.json` 的版本时，先按旧版本配置访问密码，并使用与该版本匹配的数据备份恢复。不要把代码回滚当作项目数据恢复。
 
 ## 交付验收
 
 在目标机器执行 `npm run verify`、`npm run doctor` 和 `npm run test:integration`。最后检查真实 HTTPS 地址的登录、发送任务、文件保存、桌面接管、终端连接和项目导出。生产集成验收使用临时任务和本地确定性模型服务，无需真实模型凭证；外部模型服务仍须用客户自己的地址验证。
 
-当前开发环境没有 Docker 和 Chromium，HTTP/WebSocket 访问保护及 React 交互回归测试不能替代目标机器的实际容器和浏览器验收。
+验收记录应注明 Git 提交和实际运行环境。HTTP/WebSocket 访问保护及 React 交互回归测试不能替代目标机器的真实 HTTPS、容器和浏览器验收。

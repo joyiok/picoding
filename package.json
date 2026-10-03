@@ -22,6 +22,7 @@
     "test:access": "npm run build && node --import tsx scripts/verify-access.ts",
     "test:browser": "npm run build && node --import tsx scripts/verify-browser.ts",
     "backup": "node dist/scripts/backup.js",
+    "access": "node dist/scripts/access.js",
     "notices": "node --import tsx scripts/notices.ts",
     "notices:check": "node --import tsx scripts/notices.ts --check"
   },

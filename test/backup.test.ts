@@ -7,6 +7,8 @@ import { tmpdir } from 'node:os';
 import { create, extract } from 'tar';
 import { backupWorkspace, restoreWorkspace, validateArchive, type BackupVolumes } from '../server/backup.js';
 import { acquireDataLease, leaseFile } from '../server/data-lease.js';
+import { AccessControl } from '../server/access.js';
+import { createAccessCredential, loadAccessCredential } from '../server/access-password.js';
 
 // Filesystem volume adapter: real tar and backup logic, explicitly no Docker.
 async function setup(t: TestContext, count = 1) {
@@ -42,12 +44,17 @@ async function setup(t: TestContext, count = 1) {
 
 test('backup and restore preserve settings, pi history, complete project bytes and browser profile', async t => {
   const state = await setup(t), ids = [...state.workspaces.keys()];
+  const password = 'backup-access-fixture-password';
+  await writeFile(join(state.data, 'access.json'), JSON.stringify(await createAccessCredential(password)), { mode: 0o600 });
   assert.deepEqual(await backupWorkspace(state.data, state.destination, state.volumes), { destination: state.destination, tasks: 1, workspaces: 1 });
   assert.equal((await stat(state.destination)).mode & 0o777, 0o700);
   state.workspaces.clear();
   assert.deepEqual(await restoreWorkspace(state.target, state.destination, state.volumes), { tasks: 1, workspaces: 1 });
   assert.equal(JSON.parse(await readFile(join(state.target, 'settings.json'), 'utf8')).apiKey, 'backup-fixture-key-only');
   assert.equal((await stat(join(state.target, 'settings.json'))).mode & 0o777, 0o600);
+  const access = new AccessControl({ host: '127.0.0.1', port: 4310, credential: await loadAccessCredential(state.target) });
+  assert.equal((await access.login({ headers: {} } as import('node:http').IncomingMessage, password)).status.authenticated, true); access.close();
+  assert.equal((await stat(join(state.target, 'access.json'))).mode & 0o777, 0o600);
   assert.match(await readFile(join(state.target, 'pi-sessions', 'fixture.jsonl'), 'utf8'), /conversation history/);
   const restored = state.workspaces.get(ids[0])!;
   assert.deepEqual(await readFile(join(restored, 'binary.dat')), Buffer.from([0, 255, 1, 128, 13, 10]));
