@@ -186,3 +186,30 @@ test('HTTP binary uploads enforce task state, relative paths, size limits and ex
   assert.equal((await request(state.server, route + 'busy.bin', 'POST', content)).status, 409);
   assert.equal((await request(state.server, '/tasks', 'POST', { source: { type: 'git', url: 'file:///tmp/repo' } })).status, 400);
 });
+
+test('saved-model HTTP routes isolate suppliers and reject switches or deletions during active tasks', async t => {
+  const state = await setup(); t.after(() => state.close());
+  const a = await request(state.server, '/settings', 'POST', { providerId: null, modelId: null, providerName: '甲', protocol: 'openai', baseUrl: 'https://a.invalid/v1', model: 'a-model', apiKey: 'a-fixture-key' });
+  const b = await request(state.server, '/settings', 'POST', { providerId: null, modelId: null, providerName: '乙', protocol: 'anthropic', baseUrl: 'https://b.invalid', model: 'b-model', apiKey: 'b-fixture-key' });
+  assert.equal((b.body.providers as unknown[]).length, 2);
+  const selection = { providerId: a.body.activeProviderId, modelId: a.body.activeModelId };
+  assert.equal((await request(state.server, '/settings/select', 'POST', selection)).status, 200);
+  assert.equal(state.settings.key(), 'a-fixture-key');
+  assert.equal((await request(state.server, '/settings/select', 'POST', { providerId: a.body.activeProviderId, modelId: b.body.activeModelId })).status, 404);
+  assert.equal((await request(state.server, '/settings/select', 'POST', null)).status, 400);
+  const now = new Date().toISOString(), id = randomUUID();
+  const task: Task = { id, title: 'Guard fixture', status: 'running', createdAt: now, updatedAt: now, messages: [], tools: [], terminal: [] }; await state.store.save(task);
+  for (const status of ['running', 'creating', 'pausing'] as const) {
+    task.status = status;
+    assert.equal((await request(state.server, '/settings/select', 'POST', { providerId: b.body.activeProviderId })).status, 409);
+    assert.equal((await request(state.server, '/settings/providers/' + a.body.activeProviderId, 'DELETE')).status, 409);
+  }
+  assert.equal(state.settings.public().activeProviderId, a.body.activeProviderId);
+  task.status = 'stopped';
+  const removed = await request(state.server, '/settings/providers/' + a.body.activeProviderId + '/models/' + a.body.activeModelId, 'DELETE');
+  assert.equal(removed.status, 200); assert.equal(removed.body.activeProviderId, b.body.activeProviderId); assert.equal(state.settings.key(), 'b-fixture-key');
+  assert.equal(JSON.stringify(removed.body).includes('b-fixture-key'), false);
+  assert.equal((await request(state.server, '/settings/providers/missing', 'DELETE')).status, 404);
+  await state.workbench.shutdown();
+  assert.equal((await request(state.server, '/settings/select', 'POST', { providerId: b.body.activeProviderId })).status, 503);
+});

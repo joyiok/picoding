@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
-import type { ChatMessage, GitProjectSource, Task, TaskEvent, TerminalEntry } from '../shared/types.js';
+import type { ChatMessage, GitProjectSource, PublicSettings, Task, TaskEvent, TerminalEntry } from '../shared/types.js';
 import { createPiSession } from './agent.js';
 import { config } from './config.js';
 import { DockerSandbox, sandboxApi, type Sandbox } from './docker.js';
@@ -28,6 +28,7 @@ export class Workbench {
   private stopping = new Map<string, Promise<void>>();
   private removing = new Map<string, Promise<void>>();
   private resourceChange?: Promise<unknown>;
+  private settingsChange?: Promise<PublicSettings>;
   private closing = false;
   private restoring = false;
   constructor(readonly store: TaskStore, readonly settings: SettingsStore, private readonly makeSandbox: (id: string) => Sandbox & { start(signal?: AbortSignal): Promise<void> } = id => new DockerSandbox(id), readonly resources = new PiResources(settings.directory)) {}
@@ -36,6 +37,7 @@ export class Workbench {
     if (this.closing) throw new HttpError(503, '工作台正在关闭，请重启后继续');
     if (this.restoring) throw new HttpError(503, '工作台正在恢复任务环境，请稍后重试');
     if (this.resourceChange) throw new HttpError(409, 'pi 包正在更新，请完成后继续任务');
+    if (this.settingsChange) throw new HttpError(409, '模型设置正在更新，请完成后继续任务');
     if (id && this.removing.has(id)) throw new HttpError(409, '任务正在删除，请等待操作结束');
     if (id && this.stopping.has(id)) throw new HttpError(409, '任务环境正在停止，请等待操作结束');
   }
@@ -331,8 +333,18 @@ export class Workbench {
     this.assistantIds.delete(id); this.events.forget(id);
   }
 
+  async changeSettings(change: () => Promise<PublicSettings>) {
+    this.available();
+    if (this.store.list().some(task => ['creating', 'running', 'pausing'].includes(task.status))) throw new HttpError(409, '请先停止正在执行的任务，再修改或切换模型');
+    // Hold the guard across disk persistence so a new send cannot start with stale credentials.
+    const operation = Promise.resolve().then(change);
+    this.settingsChange = operation;
+    try { const settings = await operation; this.invalidateSessions(); return settings; }
+    finally { this.settingsChange = undefined; }
+  }
+
   invalidateSessions() {
-    if (this.store.list().some(task => ['running', 'pausing'].includes(task.status))) throw new HttpError(409, '请先停止正在执行的任务，再修改模型设置');
+    if (this.store.list().some(task => ['creating', 'running', 'pausing'].includes(task.status))) throw new HttpError(409, '请先停止正在执行的任务，再修改模型设置');
     for (const session of this.sessions.values()) session.dispose();
     this.sessions.clear();
   }
@@ -354,6 +366,7 @@ export class Workbench {
     this.closing = true;
     for (const controller of this.sendAbort.values()) controller.abort();
     await this.resourceChange?.catch(() => {});
+    await this.settingsChange?.catch(() => {});
     for (const controller of this.startingAbort.values()) controller.abort();
     for (const controller of this.manualCommands.values()) controller.abort();
     await Promise.allSettled([...this.preparing.values()]);

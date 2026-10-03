@@ -18,7 +18,7 @@ export async function createModelRuntime(settings: SettingsStore, directory = jo
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const runtime = await ModelRuntime.create({ authPath: join(directory, 'auth.json'), modelsPath: null, modelsStorePath: join(directory, 'models-cache'), allowModelNetwork: false });
   const value = settings.get();
-  const provider = `picoding-${value.protocol}`;
+  const provider = `picoding-${settings.public().activeProviderId || value.protocol}`;
   if (value.model && value.baseUrl) {
     runtime.registerProvider(provider, {
       baseUrl: value.baseUrl, api: value.protocol === 'anthropic' ? 'anthropic-messages' : 'openai-completions',

@@ -83,7 +83,29 @@ export interface ModelSettings extends ModelCapabilities {
   apiKey?: string;
 }
 
-export type ModelSettingsInput = Omit<ModelSettings, keyof ModelCapabilities> & Partial<ModelCapabilities>;
+export interface SavedModel extends ModelCapabilities {
+  id: string;
+  model: string;
+}
+
+export interface PublicProvider {
+  id: string;
+  name: string;
+  protocol: APIProtocol;
+  baseUrl: string;
+  hasApiKey: boolean;
+  selectedModelId?: string;
+  models: SavedModel[];
+}
+
+// Omitted IDs edit the current connection for older API clients; null creates a new entry.
+export type ModelSettingsInput = Omit<ModelSettings, keyof ModelCapabilities> & Partial<ModelCapabilities> & {
+  providerId?: string | null;
+  modelId?: string | null;
+  providerName?: string;
+};
+
+export interface ModelSelection { providerId: string; modelId?: string; }
 
 export interface PublicSettings extends ModelCapabilities {
   protocol: APIProtocol;
@@ -91,6 +113,9 @@ export interface PublicSettings extends ModelCapabilities {
   baseUrl: string;
   hasApiKey: boolean;
   configured: boolean;
+  providers: PublicProvider[];
+  activeProviderId?: string;
+  activeModelId?: string;
 }
 
 export interface Health {

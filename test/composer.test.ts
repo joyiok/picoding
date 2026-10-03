@@ -1,15 +1,19 @@
 import { after, test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
+import { readFileSync } from 'node:fs';
 import { setImmediate } from 'node:timers/promises';
 import { act, createElement } from 'react';
 import type { Root } from 'react-dom/client';
 import { Window, type HTMLInputElement as FixtureInput } from 'happy-dom';
-import type { Task } from '../shared/types.js';
+import type { PublicSettings, Task } from '../shared/types.js';
 import type { AccessStatus } from '../server/access.js';
 
 const styles = registerHooks({ load(url, context, next) {
-  return url.endsWith('.css') ? { format: 'module', source: 'export {};', shortCircuit: true } : next(url, context);
+  if (url.endsWith('.css')) return { format: 'module', source: 'export {};', shortCircuit: true };
+  // Node 22's synchronous hooks require source for CommonJS loaded through tsx.
+  if (context.format === 'commonjs' && url.startsWith('file:') && /\.c?js$/.test(url)) return { format: 'commonjs', source: readFileSync(new URL(url), 'utf8'), shortCircuit: true };
+  return next(url, context);
 } });
 after(() => styles.deregister());
 
@@ -25,11 +29,13 @@ function json(value: unknown, status = 200) { return new Response(JSON.stringify
 async function setup(t: TestContext, protectedAccess = false) {
   const window = new Window({ url: 'http://127.0.0.1:4310', width: 1280, settings: { disableIframePageLoading: true, disableCSSFileLoading: true, disableJavaScriptFileLoading: true } });
   const saved = new Map<string, PropertyDescriptor | undefined>();
+  const streams: Events[] = [];
   class Events {
     onopen?: () => void; onerror?: () => void; onmessage?: () => void;
     private closed = false;
-    constructor() { queueMicrotask(() => { if (!this.closed) this.onopen?.(); }); }
+    constructor() { streams.push(this); queueMicrotask(() => { if (!this.closed) this.onopen?.(); }); }
     close() { this.closed = true; }
+    reconnect() { if (!this.closed) this.onopen?.(); }
   }
   const globals: Record<string, unknown> = {
     window, document: window.document, navigator: window.navigator, location: window.location,
@@ -42,6 +48,13 @@ async function setup(t: TestContext, protectedAccess = false) {
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   }
   const tasks = [task(taskA, 'Task A'), task(taskB, 'Task B')];
+  let modelSettings: PublicSettings = { configured: true, hasApiKey: true, protocol: 'openai', model: 'fixture', baseUrl: 'https://fixture.invalid/v1', contextWindow: 128000, maxTokens: 16384, supportsImages: false, activeProviderId: 'first-provider', activeModelId: 'first-model', providers: [
+    { id: 'first-provider', name: '供应商甲', protocol: 'openai', baseUrl: 'https://fixture.invalid/v1', hasApiKey: true, selectedModelId: 'first-model', models: [
+      { id: 'first-model', model: 'fixture', contextWindow: 128000, maxTokens: 16384, supportsImages: false },
+      { id: 'alternate-model', model: 'alternate-fixture', contextWindow: 32768, maxTokens: 4096, supportsImages: true },
+    ] },
+    { id: 'second-provider', name: '供应商乙', protocol: 'anthropic', baseUrl: 'https://second.invalid', hasApiKey: true, selectedModelId: 'second-model', models: [{ id: 'second-model', model: 'second-fixture', contextWindow: 8192, maxTokens: 2048, supportsImages: false }] },
+  ] };
   let access: AccessStatus = { required: protectedAccess, authenticated: !protectedAccess };
   const calls: string[] = [];
   const pending: { path: string; body?: unknown; resolve: (reply: Response) => void }[] = [];
@@ -54,7 +67,7 @@ async function setup(t: TestContext, protectedAccess = false) {
     if (path === '/api/auth') return json(access);
     if (path === '/api/tasks') return json(tasks);
     if (path === '/api/health') return json({ docker: { available: true, imageReady: true }, model: { configured: true }, version: 'test' });
-    if (path === '/api/settings') return json({ configured: true, hasApiKey: true, protocol: 'openai', model: 'fixture', baseUrl: 'https://fixture.invalid/v1', contextWindow: 128000, maxTokens: 16384, supportsImages: false });
+    if (path === '/api/settings') return json(modelSettings);
     if (path.endsWith('/browser')) return json({ url: 'about:blank', title: '', tabs: [] });
     if (path.includes('/files?')) return json([]);
     throw new Error('Unexpected DOM fixture request: ' + path);
@@ -95,6 +108,7 @@ async function setup(t: TestContext, protectedAccess = false) {
   async function reply(value: unknown, status = 200) {
     const request = pending.shift(); assert.ok(request, 'Expected a pending API request');
     if (status === 200 && request.path.startsWith('/api/auth/')) access = value as AccessStatus;
+    if (status === 200 && ['/api/settings', '/api/settings/select'].includes(request.path)) modelSettings = value as PublicSettings;
     await act(async () => { request.resolve(json(value, status)); });
     return request;
   }
@@ -112,7 +126,12 @@ async function setup(t: TestContext, protectedAccess = false) {
     access = { required: true, authenticated: false };
     await act(async () => { window.dispatchEvent(new window.Event('picoding:unauthorized')); });
   }
-  return { composer, click, select, type, reply, selected, remount, tasks, pending, storage: window.sessionStorage, beforeUnload, typePassword, typeInput, calls, document: window.document, expireAccess };
+  async function option(selector: string, value: string) {
+    const input = window.document.querySelector(selector); assert.ok(input);
+    await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')!.set!.call(input, value); input.dispatchEvent(new window.Event('change', { bubbles: true })); });
+  }
+  async function reconnect() { await act(async () => { for (const stream of streams) stream.reconnect(); }); }
+  return { composer, click, select, type, reply, selected, remount, tasks, pending, storage: window.sessionStorage, beforeUnload, typePassword, typeInput, calls, document: window.document, expireAccess, option, reconnect, settings: () => modelSettings };
 }
 
 test('task switching preserves each message draft and the new-task draft', async t => {
@@ -274,9 +293,56 @@ test('failed task rename keeps the entered name for retry and cancellation keeps
 test('an open settings modal is suspended during session expiry and restored with its unsaved fields', async t => {
   const ui = await setup(t, true);
   await ui.typePassword('fixture-password'); await ui.click('.access-submit'); await ui.reply({ required: true, authenticated: true, expiresAt: Date.now() + 3600_000 });
-  await ui.click('.model-button'); await ui.typeInput('#model', 'unsaved-model-fixture');
+  await ui.click('.model-button'); await ui.click('.model-menu .text-button'); await ui.typeInput('#model', 'unsaved-model-fixture');
   const dialog = ui.document.querySelector('dialog')!; assert.equal(dialog.hasAttribute('open'), true);
   await ui.expireAccess(); assert.equal(dialog.hasAttribute('open'), false); assert.ok(ui.document.querySelector('#access-password'));
   await ui.typePassword('fixture-password'); await ui.click('.access-submit'); await ui.reply({ required: true, authenticated: true, expiresAt: Date.now() + 3600_000 });
   assert.equal(dialog.hasAttribute('open'), true); assert.equal(ui.document.querySelector<FixtureInput>('#model')!.value, 'unsaved-model-fixture');
+});
+
+test('quick switching sends only saved IDs, retains the draft and keeps the current model on failure', async t => {
+  const ui = await setup(t); await ui.select('Task A'); await ui.type('Keep message while switching');
+  await ui.click('.model-button'); await ui.option('.model-menu select:first-of-type', 'second-provider');
+  await ui.reconnect(); assert.equal(ui.document.querySelector('select')!.value, 'second-provider');
+  await ui.click('.model-menu .primary');
+  assert.deepEqual(ui.pending[0].body, { providerId: 'second-provider', modelId: 'second-model' });
+  assert.equal(ui.pending[0].path, '/api/settings/select');
+  await ui.reply({ error: 'Fixture switch failure' }, 503);
+  assert.match(ui.document.querySelector('.model-button')!.textContent, /供应商甲/);
+  assert.match(ui.document.querySelector('.model-menu [role="alert"]')!.textContent, /switch failure/);
+  assert.equal(ui.document.querySelector('select')!.value, 'second-provider');
+  await ui.click('.model-menu .primary');
+  const settings = ui.settings(), provider = settings.providers[1], model = provider.models[0];
+  await ui.reply({ ...settings, ...model, protocol: provider.protocol, baseUrl: provider.baseUrl, activeProviderId: provider.id, activeModelId: model.id });
+  assert.equal(ui.document.querySelector('.model-menu'), null); assert.match(ui.document.querySelector('.model-button')!.textContent, /供应商乙.*second-fixture/);
+  assert.equal(ui.composer().value, 'Keep message while switching'); assert.equal(ui.selected(), 'Task A');
+});
+
+test('model settings keep unsaved drafts for each supplier and add a model without exposing its stored key', async t => {
+  const ui = await setup(t); await ui.click('.model-button'); await ui.click('.model-menu .text-button');
+  await ui.typeInput('#model', 'unsaved-first');
+  await ui.typeInput('#provider-name', '供应商甲的新名称');
+  await ui.option('#saved-provider', 'second-provider'); assert.equal(ui.document.querySelector<FixtureInput>('#model')!.value, 'second-fixture');
+  assert.equal(ui.document.querySelector<FixtureInput>('#api-key')!.value, '');
+  await ui.option('#saved-provider', 'first-provider'); assert.equal(ui.document.querySelector<FixtureInput>('#model')!.value, 'unsaved-first');
+  await ui.option('#saved-model', ''); await ui.typeInput('#model', 'new-model');
+  assert.equal(ui.document.querySelector<FixtureInput>('#provider-name')!.value, '供应商甲的新名称');
+  assert.equal(ui.document.querySelector<FixtureInput>('#api-key')!.required, false);
+  await ui.click('.settings-dialog .primary');
+  const body = ui.pending[0].body as Record<string, unknown>;
+  assert.equal(body.providerId, 'first-provider'); assert.equal(body.modelId, null); assert.equal(body.model, 'new-model'); assert.equal(body.providerName, '供应商甲的新名称'); assert.equal('apiKey' in body, false);
+  await ui.reply({ error: 'Fixture save failure' }, 503);
+  assert.equal(ui.document.querySelector<FixtureInput>('#model')!.value, 'new-model');
+  assert.match(ui.document.querySelector('.settings-dialog [role="alert"]')!.textContent, /save failure/);
+  await ui.option('#saved-provider', '');
+  assert.equal(ui.document.querySelector<FixtureInput>('#api-key')!.required, true); assert.equal(ui.document.querySelector<FixtureInput>('#base-url')!.value, '');
+});
+
+test('quick switching is unavailable while any task is executing', async t => {
+  const ui = await setup(t); ui.tasks[0].status = 'running'; await ui.remount();
+  await ui.click('.model-button'); await ui.option('.model-menu select:first-of-type', 'second-provider');
+  assert.equal(ui.document.querySelector('.model-menu .primary')!.hasAttribute('disabled'), true);
+  assert.match(ui.document.querySelector('.model-menu [role="status"]')!.textContent, /先停止/);
+  await ui.click('.model-menu .text-button');
+  assert.equal(ui.document.querySelector('.settings-dialog .primary')!.hasAttribute('disabled'), true);
 });

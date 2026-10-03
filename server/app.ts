@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, relative, isAbsolute } from 'node:path';
-import { maxUploadBytes, type FileWriteOptions, type ModelSettingsInput } from '../shared/types.js';
+import { maxUploadBytes, type FileWriteOptions, type ModelSettingsInput, type ModelSelection } from '../shared/types.js';
 import { gitProjectSource, uploadPath } from '../shared/project.js';
 import { config } from './config.js';
 import { dockerHealth, sandboxApi } from './docker.js';
@@ -45,10 +45,16 @@ export function createApp(workbench: Workbench, access = new AccessControl(confi
         if (method === 'GET') return json(response, workbench.settings.public());
         if (method === 'POST') {
           const body = await readJson<ModelSettingsInput>(request);
-          workbench.settings.preview(body);
-          workbench.invalidateSessions();
-          return json(response, await workbench.settings.update(body));
+          return json(response, await workbench.changeSettings(() => workbench.settings.update(body)));
         }
+      }
+      if (url.pathname === '/api/settings/select' && method === 'POST') {
+        const selection = await readJson<ModelSelection>(request);
+        return json(response, await workbench.changeSettings(() => workbench.settings.select(selection)));
+      }
+      const savedModelRoute = url.pathname.match(/^\/api\/settings\/providers\/([^/]+)(?:\/models\/([^/]+))?$/);
+      if (savedModelRoute && method === 'DELETE') {
+        return json(response, await workbench.changeSettings(() => workbench.settings.remove(decodeURIComponent(savedModelRoute[1]), savedModelRoute[2] ? decodeURIComponent(savedModelRoute[2]) : undefined)));
       }
       if (url.pathname === '/api/settings/test' && method === 'POST') {
         const candidate = workbench.settings.preview(await readJson<ModelSettingsInput>(request));

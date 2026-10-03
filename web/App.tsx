@@ -5,6 +5,7 @@ import { Chat } from './Chat';
 import { Computer } from './Computer';
 import { Icon, PiMark } from './Icon';
 import { Settings } from './Settings';
+import { ModelSwitch } from './ModelSwitch';
 import { Project } from './Project';
 import { Resources } from './Resources';
 import { browserDraftStorage, WorkspaceDrafts } from './drafts';
@@ -40,10 +41,15 @@ export function App({ onLogout }: { onLogout?: () => Promise<void> } = {}) {
   const [copied, setCopied] = useState(false);
   const composer = useRef<HTMLTextAreaElement>(null);
   const sidebar = useRef<HTMLElement>(null);
+  const refreshVersion = useRef(0);
   const task = tasks.find(task => task.id === activeId);
+  const modelBlockedReason = tasks.some(task => ['creating', 'running', 'pausing'].includes(task.status)) ? '请先停止正在执行的任务，再修改或切换模型。' : undefined;
+  const modelSaved = (value: PublicSettings) => { setSettings(value); void refresh(); };
   const visibleTasks = tasks.filter(task => task.title.toLocaleLowerCase().includes(taskQuery.trim().toLocaleLowerCase()));
   const refresh = useCallback(async () => {
+    const version = ++refreshVersion.current;
     const results = await Promise.allSettled([api<Task[]>('/tasks'), api<Health>('/health'), api<PublicSettings>('/settings')]);
+    if (version !== refreshVersion.current) return;
     if (results[0].status === 'fulfilled') { setTasks(results[0].value); workspace.restoreAvailableTasks(results[0].value.map(task => task.id)); setConnected(true); } else { setConnected(false); setError('暂时无法连接工作台，请检查网络或联系部署管理员，然后重试。'); }
     if (results[1].status === 'fulfilled') setHealth(results[1].value);
     if (results[2].status === 'fulfilled') setSettings(results[2].value);
@@ -170,7 +176,7 @@ export function App({ onLogout }: { onLogout?: () => Promise<void> } = {}) {
       <div className="sidebar-bottom"><button className="settings-nav" onClick={() => { setSidebarOpen(false); setResourcesOpen(true); }}><Icon name="folder" size={17} />Skills 和插件<Icon name="chevron" size={14} /></button><button className="settings-nav" onClick={() => { setSidebarOpen(false); setSettingsOpen(true); }}><Icon name="settings" size={17} />模型设置<Icon name="chevron" size={14} /></button><div className="local-profile"><span className="profile-avatar">我</span><div><strong>{onLogout ? '私有工作台' : '本地工作台'}</strong><small><span className={`status-dot ${connected ? 'online' : ''}`} />{connected ? onLogout ? '访问已保护' : '仅在你的电脑上运行' : '正在重新连接…'}</small></div>{onLogout && <button className="icon-button" aria-label="退出登录" title="退出登录" onClick={() => { if (!editorDirty || confirm('代码还有未保存的改动，是否退出登录？重新登录后可继续编辑。')) void onLogout(); }}><Icon name="logout" size={16} /></button>}</div></div>
     </aside>
     <main className="main-workspace" inert={mobile && sidebarOpen}>
-      <header className="workspace-header"><div className="header-title"><button className="icon-button mobile-only" aria-label="打开任务列表" aria-expanded={sidebarOpen} aria-controls="task-navigation" onClick={() => setSidebarOpen(true)}><Icon name="menu" /></button><span>{task?.title || '新的开始'}</span>{task && <button className="icon-button rename-task" aria-label="重命名任务" title="重命名任务" onClick={() => setNameOpen(true)}><Icon name="edit" size={14} /></button>}{task && <span className={`task-status ${task.status}`}><span className="status-dot" />{statuses[task.status]}</span>}</div><div className="header-actions"><button className="model-button" onClick={() => setSettingsOpen(true)}><span className={`status-dot ${settings?.configured ? 'online' : ''}`} /><span>{settings?.configured ? settings.model || (settings.protocol === 'anthropic' ? 'Anthropic 格式' : 'OpenAI 格式') : '连接模型'}</span><Icon name="down" size={13} /></button>{task && <><button className="icon-button" aria-label="下载项目" title="下载项目" disabled={!['ready', 'paused', 'running'].includes(task.status)} onClick={() => { window.location.href = `/api${taskPath(task.id, 'archive')}`; }}><Icon name="download" /></button><button className="icon-button" aria-label="删除任务" title="删除任务" disabled={busy || ['creating', 'running', 'pausing'].includes(task.status)} onClick={() => void remove()}><Icon name="trash" size={17} /></button></>}</div></header>
+      <header className="workspace-header"><div className="header-title"><button className="icon-button mobile-only" aria-label="打开任务列表" aria-expanded={sidebarOpen} aria-controls="task-navigation" onClick={() => setSidebarOpen(true)}><Icon name="menu" /></button><span>{task?.title || '新的开始'}</span>{task && <button className="icon-button rename-task" aria-label="重命名任务" title="重命名任务" onClick={() => setNameOpen(true)}><Icon name="edit" size={14} /></button>}{task && <span className={`task-status ${task.status}`}><span className="status-dot" />{statuses[task.status]}</span>}</div><div className="header-actions"><ModelSwitch settings={settings} blockedReason={modelBlockedReason} onSaved={modelSaved} onManage={() => setSettingsOpen(true)} />{task && <><button className="icon-button" aria-label="下载项目" title="下载项目" disabled={!['ready', 'paused', 'running'].includes(task.status)} onClick={() => { window.location.href = `/api${taskPath(task.id, 'archive')}`; }}><Icon name="download" /></button><button className="icon-button" aria-label="删除任务" title="删除任务" disabled={busy || ['creating', 'running', 'pausing'].includes(task.status)} onClick={() => void remove()}><Icon name="trash" size={17} /></button></>}</div></header>
       {error && <div className="error-banner" role="alert"><Icon name="alert" size={17} /><span>{error}</span>{!connected && <button onClick={() => { setError(''); void refresh(); }}>重试</button>}<button className="icon-button" aria-label="关闭提示" onClick={() => setError('')}><Icon name="close" size={15} /></button></div>}
       <div className="mobile-switch" role="group" aria-label="工作区视图"><button className={mobilePanel === 'chat' ? 'active' : ''} onClick={() => setMobilePanel('chat')}><Icon name="chat" size={15} />对话</button><button className={mobilePanel === 'computer' ? 'active' : ''} onClick={() => setMobilePanel('computer')}><Icon name="browser" size={15} />任务电脑</button></div>
       <div className={`workbench-grid mobile-${mobilePanel}`}>
@@ -189,7 +195,7 @@ export function App({ onLogout }: { onLogout?: () => Promise<void> } = {}) {
       <footer className="workspace-footer"><button className="environment-check" disabled={checkingEnvironment} onClick={() => void checkEnvironment()} title="重新检查 Docker 和任务环境"><span className={`status-dot ${health?.docker.imageReady ? 'online' : ''}`} />{checkingEnvironment ? '正在检查环境…' : health?.docker.imageReady ? '任务环境已就绪' : health?.docker.available ? '环境镜像待构建 · 重新检查' : '等待 Docker · 重新检查'}</button>{task && !['creating', 'pausing', 'stopped'].includes(task.status) && <button onClick={() => void act('stop')}><Icon name="stop" size={12} />停止环境</button>}<span>Powered by pi</span></footer>
     </main>
     {nameOpen && task && <TaskName key={task.id} title={task.title} save={renameTask} close={() => setNameOpen(false)} />}
-    {settingsOpen && <Settings initial={settings} onClose={() => setSettingsOpen(false)} onSaved={value => { setSettings(value); void refresh(); }} />}
+    {settingsOpen && <Settings initial={settings} onClose={() => setSettingsOpen(false)} onSaved={modelSaved} blockedReason={modelBlockedReason} />}
     {projectOpen && <Project onClose={() => setProjectOpen(false)} onCreated={created => { setTasks(tasks => [created, ...tasks]); setActiveId(created.id); setError(''); setMobilePanel('computer'); }} />}
     {resourcesOpen && <Resources onClose={() => setResourcesOpen(false)} onUse={command => { setDraft(command); setMobilePanel('chat'); requestAnimationFrame(() => composer.current?.focus()); }} />}
   </div>;
