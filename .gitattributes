@@ -1,0 +1,2 @@
+# Preserve formatting in quoted upstream license and notice files.
+THIRD_PARTY_NOTICES.md -text whitespace=-trailing-space
