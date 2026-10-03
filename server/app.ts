@@ -12,11 +12,16 @@ import { TerminalBridge } from './terminal.js';
 import { probeModel } from './model-probe.js';
 import type { PiPackageAction } from '../shared/resources.js';
 import { AccessControl } from './access.js';
+import { UpdateManager } from './updates.js';
+import { runningVersion } from './version.js';
+import { updateActive } from '../shared/updates.js';
 
 const contentTypes: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.ico': 'image/x-icon' };
 
-export function createApp(workbench: Workbench, access = new AccessControl(config)) {
+export function createApp(workbench: Workbench, access = new AccessControl(config), updates = new UpdateManager(config.updateDir)) {
   const terminals = new TerminalBridge(workbench);
+  const version = runningVersion();
+  let installing = false;
   const webRoot = resolve('dist/web');
   const server = createServer(async (request, response) => {
     response.setHeader('X-Content-Type-Options', 'nosniff');
@@ -27,7 +32,10 @@ export function createApp(workbench: Workbench, access = new AccessControl(confi
       access.checkRequest(request);
       const url = new URL(request.url || '/', `http://127.0.0.1:${config.port}`);
       const method = request.method || 'GET';
-      if (url.pathname === '/api/auth' && method === 'GET') return json(response, access.status(request));
+      if (url.pathname === '/api/auth' && method === 'GET') {
+        response.setHeader('X-PiCoding-Commit', (await version).commit || '');
+        return json(response, access.status(request));
+      }
       if (url.pathname === '/api/auth/login' && method === 'POST') {
         const body = await readJson<{ password: unknown }>(request, 4096);
         const result = await access.login(request, body.password);
@@ -37,9 +45,33 @@ export function createApp(workbench: Workbench, access = new AccessControl(confi
         response.setHeader('Set-Cookie', access.logout(request)); return json(response, access.status(request));
       }
       if (url.pathname.startsWith('/api/')) { access.require(request); access.protectConnection(request, response, () => response.end()); }
+      if (url.pathname === '/api/updates' && method === 'GET') {
+        const status = await updates.status();
+        if (!installing && !updateActive(status.job)) workbench.endUpdate();
+        return json(response, status);
+      }
+      if (url.pathname === '/api/updates/check' && method === 'POST') return json(response, await updates.check());
+      if (url.pathname === '/api/updates/install' && method === 'POST') {
+        if (installing) throw new HttpError(409, '更新已经开始，请等待完成');
+        installing = true;
+        let guarded = false, queued = false;
+        try {
+          if (updateActive((await updates.status()).job)) throw new HttpError(409, '更新已经开始，请等待完成');
+          workbench.endUpdate();
+          workbench.beginUpdate(); guarded = true;
+          const { commit } = await readJson<{ commit: unknown }>(request, 1024);
+          const result = await updates.request(commit); queued = true;
+          return json(response, result, 202);
+        } finally { installing = false; if (guarded && !queued) workbench.endUpdate(); }
+      }
+      if (url.pathname.startsWith('/api/') && !['GET', 'HEAD'].includes(method)) {
+        const active = updateActive((await updates.status()).job);
+        if (installing || active) throw new HttpError(503, '工作台正在更新，请等待完成后继续操作');
+        workbench.endUpdate();
+      }
       if (url.pathname === '/api/health' && method === 'GET') {
         const settings = workbench.settings.public();
-        return json(response, { docker: await dockerHealth(), model: { configured: settings.configured, protocol: settings.protocol, model: settings.model }, version: '0.1.0' });
+        return json(response, { docker: await dockerHealth(), model: { configured: settings.configured, protocol: settings.protocol, model: settings.model }, version: (await version).version });
       }
       if (url.pathname === '/api/settings') {
         if (method === 'GET') return json(response, workbench.settings.public());

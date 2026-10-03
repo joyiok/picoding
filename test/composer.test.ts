@@ -8,6 +8,7 @@ import type { Root } from 'react-dom/client';
 import { Window, type HTMLInputElement as FixtureInput } from 'happy-dom';
 import type { PublicSettings, Task } from '../shared/types.js';
 import type { AccessStatus } from '../server/access.js';
+import type { UpdateStatus } from '../shared/updates.js';
 
 const styles = registerHooks({ load(url, context, next) {
   if (url.endsWith('.css')) return { format: 'module', source: 'export {};', shortCircuit: true };
@@ -56,6 +57,7 @@ async function setup(t: TestContext, protectedAccess = false) {
     { id: 'second-provider', name: '供应商乙', protocol: 'anthropic', baseUrl: 'https://second.invalid', hasApiKey: true, selectedModelId: 'second-model', models: [{ id: 'second-model', model: 'second-fixture', contextWindow: 8192, maxTokens: 2048, supportsImages: false }] },
   ] };
   let access: AccessStatus = { required: protectedAccess, authenticated: !protectedAccess };
+  let updateStatus: UpdateStatus = { current: { version: '0.1.0', commit: 'a'.repeat(40), dirty: false }, available: false, enabled: true };
   const calls: string[] = [];
   const pending: { path: string; body?: unknown; resolve: (reply: Response) => void }[] = [];
   t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, options?: RequestInit) => {
@@ -68,6 +70,7 @@ async function setup(t: TestContext, protectedAccess = false) {
     if (path === '/api/tasks') return json(tasks);
     if (path === '/api/health') return json({ docker: { available: true, imageReady: true }, model: { configured: true }, version: 'test' });
     if (path === '/api/settings') return json(modelSettings);
+    if (path === '/api/updates') return json(updateStatus);
     if (path.endsWith('/browser')) return json({ url: 'about:blank', title: '', tabs: [] });
     if (path.includes('/files?')) return json([]);
     throw new Error('Unexpected DOM fixture request: ' + path);
@@ -109,6 +112,7 @@ async function setup(t: TestContext, protectedAccess = false) {
     const request = pending.shift(); assert.ok(request, 'Expected a pending API request');
     if (status === 200 && request.path.startsWith('/api/auth/')) access = value as AccessStatus;
     if (status === 200 && ['/api/settings', '/api/settings/select'].includes(request.path)) modelSettings = value as PublicSettings;
+    if ((status === 200 || status === 202) && request.path.startsWith('/api/updates/')) updateStatus = value as UpdateStatus;
     await act(async () => { request.resolve(json(value, status)); });
     return request;
   }
@@ -345,4 +349,39 @@ test('quick switching is unavailable while any task is executing', async t => {
   assert.match(ui.document.querySelector('.model-menu [role="status"]')!.textContent, /先停止/);
   await ui.click('.model-menu .text-button');
   assert.equal(ui.document.querySelector('.settings-dialog .primary')!.hasAttribute('disabled'), true);
+});
+
+test('system updates retain model drafts, require explicit confirmation, pin the checked commit and show durable progress', async t => {
+  const ui = await setup(t); await ui.type('Keep composer draft');
+  await ui.click('.model-button'); await ui.click('.model-menu .text-button');
+  await ui.typeInput('#model', 'unsaved-model');
+  await ui.click('.settings-tabs button:last-child');
+  assert.equal(ui.document.querySelector('.update-actions .primary')!.hasAttribute('disabled'), true);
+  await ui.click('.update-actions .secondary');
+  const status: UpdateStatus = { current: { version: '0.1.0', commit: 'a'.repeat(40), dirty: false }, latest: { commit: 'b'.repeat(40), title: '模拟更新：新增功能', date: '2026-10-04T00:00:00Z', url: 'https://github.com/joyiok/picoding/commit/' + 'b'.repeat(40) }, available: true, enabled: true, checkedAt: new Date().toISOString() };
+  const checked = await ui.reply(status); assert.equal(checked.path, '/api/updates/check');
+  await ui.click('.update-actions .primary');
+  assert.equal(ui.pending.length, 0); assert.match(ui.document.querySelector('.update-confirm')!.textContent, /先保存未保存的编辑/);
+  assert.equal(ui.document.activeElement, ui.document.querySelector('.update-confirm'));
+  assert.equal(ui.document.querySelector('.update-confirm')!.getAttribute('aria-labelledby'), 'updates-confirm-warning');
+  await ui.click('.update-confirm .secondary');
+  assert.equal(ui.document.activeElement, ui.document.querySelector('.update-actions .primary'));
+  await ui.click('.update-actions .primary');
+  await ui.click('.update-confirm .primary');
+  assert.equal(ui.pending[0].path, '/api/updates/install'); assert.deepEqual(ui.pending[0].body, { commit: 'b'.repeat(40) });
+  await ui.reply({ ...status, job: { id: 'fixture-job', commit: 'b'.repeat(40), phase: 'preparing', message: '正在构建模拟更新', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() } }, 202);
+  assert.match(ui.document.querySelector('.update-progress')!.textContent, /正在构建模拟更新/);
+  assert.equal(ui.document.querySelector('.update-actions .primary')!.hasAttribute('disabled'), true);
+  await ui.click('.settings-tabs button:first-child');
+  assert.equal(ui.document.querySelector<FixtureInput>('#model')!.value, 'unsaved-model');
+  assert.equal(ui.composer().value, 'Keep composer draft');
+});
+
+test('a failed update check clears an old install target and leaves a retryable error', async t => {
+  const ui = await setup(t); await ui.click('.model-button'); await ui.click('.model-menu .text-button');
+  await ui.click('.settings-tabs button:last-child'); await ui.click('.update-actions .secondary');
+  await ui.reply({ error: 'GitHub 暂时不可用' }, 502);
+  assert.equal(ui.document.querySelector('.update-actions .primary')!.hasAttribute('disabled'), true);
+  assert.match(ui.document.querySelector('.system-updates [role="alert"]')!.textContent, /GitHub 暂时不可用/);
+  assert.equal(ui.document.querySelector('.update-actions .secondary')!.hasAttribute('disabled'), false);
 });

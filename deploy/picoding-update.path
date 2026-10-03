@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch for PiCoding update requests
+
+[Path]
+PathExists=/var/lib/picoding-updates/request.json
+Unit=picoding-update.service
+
+[Install]
+WantedBy=multi-user.target

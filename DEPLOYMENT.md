@@ -72,6 +72,33 @@ sudo journalctl -u picoding -n 100
 
 把 [Caddyfile](deploy/Caddyfile) 的站点块合并到 Caddy 配置，将域名与 `PICODING_PUBLIC_ORIGIN` 保持一致，再运行 `caddy validate` 和重载。域名 DNS 指向服务器，公网开放 HTTPS 所需端口；控制服务保持 loopback。Caddy 的标准反代支持 WebSocket，并对 `text/event-stream` 即时传输，配置依据见 [官方 reverse_proxy 文档](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)。
 
+## 设置页一键更新
+
+设置页的「系统更新」检查公开仓库 `joyiok/picoding` 的 main 分支，显示当前构建提交、新提交说明与时间。检查失败会清除可安装的旧结果；安装只接受刚检查过的提交，不接受用户提供的仓库或命令。GitHub 限流或网络失败会显示可重试提示。
+
+网页更新适用于上面的 Linux systemd 部署：服务名称 `picoding.service`、用户 `picoding`、代码入口 `/opt/picoding`，配置保存在 `/etc/picoding.env`，数据保存在代码目录之外，例如 `/var/lib/picoding`。先拉取本功能的代码，运行 `npm ci`、`npm run build`，再从 `/opt/picoding` 执行一次：
+
+```bash
+sudo npm run update -- setup
+```
+
+安装工具读取 `/etc/picoding.env`，将代码移入 `/opt/picoding-releases` 并建立 `/opt/picoding` 链接，配置专用更新服务和路径监听，加入 `PICODING_UPDATE_DIR=/var/lib/picoding-updates`，然后重启工作台。代码目录若含 `.env` 或 `.picoding`，请先按本文迁移到外部配置和数据目录。工具不会自动迁移或删除用户数据。使用系统级 Node；维护程序单独安装到 root 管理的 `/usr/local/lib/picoding/runner`，不依赖旧发布目录的 node_modules。后续若维护程序协议变更，由管理员重新运行 setup。
+
+登录后打开「模型设置 → 系统更新」，点击「检查更新」，再点击「立即更新」并确认。请先停止执行中的任务、等待已有任务操作完成，并保存未保存的编辑。更新开始后禁止新的任务、模型和资源变更；已有任务环境在切换阶段正常停止，项目卷保留。关闭设置窗口不会取消更新，回来后仍可查看进度。
+
+更新服务先以 `picoding` 用户在独立发布目录下载代码、安装锁定依赖、构建程序及新任务镜像；旧服务在构建期间继续运行。它验证目标提交属于官方 main 且是原版本之后的提交，拒绝本地修改或版本分叉。构建成功才停止服务，使用旧版维护命令完整备份控制数据和项目卷到 `/srv/picoding-backups/<时间-更新ID>`，然后切换代码链接和任务镜像。访问密码哈希、模型密钥和项目数据保留；环境文件保持不变。
+
+服务只有通过启动、访问接口和构建提交检查后才显示完成。登录会话因重启失效，请重新登录后点击「加载新版本」。任务环境可在任务中手动启动。构建失败保留原服务；备份失败重新启动原服务；新程序启动失败恢复旧代码链接及原任务镜像。更新服务被 systemd 中断时，结束处理器根据 root 私有恢复记录尝试启动原程序并标记失败。不会自动覆盖当前数据或项目卷；若新版本涉及数据格式迁移，应按备份恢复步骤由管理员处理。机器断电不执行结束处理器，管理员需启动工作台并检查日志、状态及备份。
+
+查看更新日志：
+
+```bash
+sudo journalctl -u picoding-update.service -n 100
+sudo systemctl status picoding-update.path picoding-update.service
+```
+
+更新请求和状态不包含密码或模型密钥。网页服务不持有 sudo 权限；root 专用服务仅消费固定目录内的提交请求，构建以服务用户执行，完成后的程序由 root 持有。请保留旧发布目录、镜像和完整备份，确认稳定后再由管理员清理。非标准目录、原生 Windows 和未安装更新服务的实例仍可检查版本，界面会提供本文安装链接。自动流程的回归使用明确的维护适配器；目标机器的 systemd、Docker 镜像切换与真实备份仍需部署验收。
+
 ## 完整备份
 
 先正常停止工作台，等待任务环境关闭。编译后的维护命令不依赖 tsx 或开发依赖：

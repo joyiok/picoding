@@ -1,0 +1,19 @@
+.settings-tabs{display:flex;gap:20px;padding:8px var(--settings-padding) 0;border-bottom:1px solid var(--line);flex-shrink:0}
+.settings-tabs button{border:0;border-radius:0;background:transparent;color:var(--muted);padding:10px 0;font-size:12px;border-bottom:2px solid transparent}
+.settings-tabs button[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.settings-dialog [hidden]{display:none!important}
+.system-updates{padding:24px var(--settings-padding) var(--settings-padding);overflow-y:auto;min-height:0;font-size:12px;line-height:1.75}
+.system-updates h3{font-size:15px;margin:0 0 10px;font-weight:600}
+.system-updates>p{color:var(--muted);margin:0 0 20px;overflow-wrap:anywhere}
+.update-versions{margin:24px 0 0}
+.update-versions>div{display:flex;gap:20px;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line)}
+.update-versions dt{color:var(--muted);flex-shrink:0}.update-versions dd{margin:0;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;min-width:0}
+.system-updates code{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.system-updates a{color:var(--green);text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere}
+.update-release{padding:16px 0}.update-release strong{display:block;overflow-wrap:anywhere;font-weight:500}.update-release small{color:var(--muted)}
+.system-updates .update-result{color:var(--green);margin-top:12px}
+.update-progress{margin:20px 0;padding:14px 16px;background:var(--chrome);border-radius:7px}.update-progress strong{font-weight:600}.update-progress p{margin:5px 0;overflow-wrap:anywhere}.update-progress small{color:var(--muted)}.update-failed strong{color:#994b40}
+.update-help{margin-top:20px!important}.update-help a{display:inline-block;margin-left:8px}
+.update-actions,.update-confirm>div{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:24px}
+.update-confirm{padding-top:8px;margin-top:20px;border-top:1px solid var(--line)}.update-confirm p{color:var(--ink);margin:12px 0}.update-confirm>div{margin-top:14px}
+@media(max-width:600px){.system-updates .button,.settings-tabs button{min-height:42px}.system-updates{padding-top:20px}}

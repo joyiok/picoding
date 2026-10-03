@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import type { PublicSettings } from '../shared/types.js';
+import type { UpdateStatus } from '../shared/updates.js';
 import { textReply } from '../test/provider.js';
 
 // Real compiled server and browser with private stopped-task fixtures.
@@ -40,6 +41,43 @@ async function capture(page: Page, name: string) {
   if (!process.env.PICODING_BROWSER_ARTIFACT_DIR) return;
   await mkdir(process.env.PICODING_BROWSER_ARTIFACT_DIR, { recursive: true });
   await page.screenshot({ path: join(process.env.PICODING_BROWSER_ARTIFACT_DIR, name + '.png') });
+}
+async function updateInterface(page: Page, prefix: string) {
+  await page.locator('.model-button').click(); await page.getByRole('button', { name: '模型设置', exact: true }).last().click();
+  await page.getByRole('button', { name: '系统更新', exact: true }).click();
+  await page.locator('.update-help').waitFor();
+  assert.match(await page.locator('.update-help').innerText(), /尚未启用/);
+  assert.equal(await page.locator('.update-actions .primary').isDisabled(), true);
+  // Browser-only update fixtures: never invoke a privileged updater or alter this installation.
+  const sha = 'b'.repeat(40);
+  let status: UpdateStatus = { current: { version: '0.1.0', commit: 'a'.repeat(40), dirty: false }, latest: { commit: sha, title: '模拟更新：新增工作台功能', date: '2026-10-04T00:00:00Z', url: 'https://github.com/joyiok/picoding/commit/' + sha }, available: true, enabled: true, checkedAt: new Date().toISOString() };
+  await page.route('**/api/updates**', async route => {
+    if (new URL(route.request().url()).pathname === '/api/updates/install') {
+      assert.deepEqual(route.request().postDataJSON(), { commit: sha });
+      status = { ...status, job: { id: 'browser-fixture', commit: sha, phase: 'preparing', message: '模拟进度：正在构建新版本', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() } };
+    }
+    await route.fulfill({ status: route.request().url().endsWith('/install') ? 202 : 200, json: status });
+  });
+  await page.getByRole('button', { name: '检查更新', exact: true }).click(); await page.locator('.update-release').waitFor();
+  await layout(page); await capture(page, prefix + '-updates');
+  await page.getByRole('button', { name: '立即更新', exact: true }).click(); await page.locator('.update-confirm').waitFor();
+  assert.equal(await page.locator('.update-confirm').evaluate(element => element === document.activeElement), true);
+  assert.equal(await page.locator('.update-confirm').getAttribute('aria-labelledby'), 'updates-confirm-warning');
+  await page.getByRole('button', { name: '暂不更新', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: '立即更新', exact: true }).evaluate(element => element === document.activeElement), true);
+  await page.getByRole('button', { name: '立即更新', exact: true }).press('Enter'); await page.locator('.update-confirm').waitFor();
+  assert.equal(await page.locator('.update-confirm').evaluate(element => element === document.activeElement), true);
+  await layout(page); await capture(page, prefix + '-updates-confirm');
+  await page.getByRole('button', { name: '确认更新', exact: true }).click(); await page.locator('.update-progress').waitFor();
+  assert.equal(await page.locator('.update-actions .primary').isDisabled(), true);
+  await layout(page); await capture(page, prefix + '-updates-progress');
+  status = { ...status, job: { ...status.job!, phase: 'failed', message: '模拟更新失败，原程序已恢复。可检查网络后重试。' } };
+  await page.getByRole('button', { name: '关闭模型设置', exact: true }).click();
+  await page.locator('.model-button').click(); await page.getByRole('button', { name: '模型设置', exact: true }).last().click();
+  await page.getByRole('button', { name: '系统更新', exact: true }).click(); await page.locator('.update-failed').waitFor();
+  await layout(page); await capture(page, prefix + '-updates-failed');
+  assert.equal(await page.getByRole('button', { name: '重试更新', exact: true }).isDisabled(), false);
+  await page.getByRole('button', { name: '关闭模型设置', exact: true }).click(); await page.unroute('**/api/updates**');
 }
 try {
   await new Promise<void>(resolve => modelFixture.listen(0, '127.0.0.1', resolve));
@@ -107,6 +145,7 @@ try {
   assert.deepEqual(modelRequests.map(request => request.key), ['Bearer fictional-browser-key', 'fictional-anthropic-key']);
   assert.deepEqual(modelRequests.map(request => request.model), ['browser-alternate-fixture', 'browser-anthropic-fixture']);
   report('saved supplier/model management, both local SDK probes, quick switching and reload persistence');
+  await updateInterface(page, 'desktop');
   const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), phone = await mobile.newPage();
   phone.on('pageerror', error => pageErrors.push(error.message));
   await phone.goto(base); await login(phone);
@@ -125,8 +164,10 @@ try {
   await phone.getByRole('button', { name: '打开任务列表' }).click(); await phone.getByRole('button', { name: '清空任务搜索' }).click();
   await phone.getByRole('button', { name: '退出登录' }).click(); await phone.locator('#access-password').waitFor({ state: 'visible' });
   await login(phone); await phone.locator('.drawer-close').click(); await layout(phone);
+  await updateInterface(phone, 'mobile');
   assert.deepEqual(pageErrors, []); assert.equal(output.includes(password), false);
   report('mobile navigation, rename, login recovery and page layout without uncaught errors');
+  report('desktop/mobile system update checks, confirmation, pinned target, progress and retry with labeled browser-only fixtures');
 } finally {
   await browser?.close();
   modelFixture.closeAllConnections(); modelFixture.close();

@@ -33,6 +33,8 @@ npm start
 
 需要登录保护时，构建后在服务停止状态运行 `npm run access -- init`，保存命令输出的随机访问密码，再启动服务。后端只在数据目录的 `access.json` 保存带随机盐的 scrypt 哈希。`npm run access -- status` 查看鉴权状态；停止服务后运行 `npm run access -- reset` 生成新密码，重启后旧密码和会话失效。已有 `PICODING_ACCESS_PASSWORD` 环境变量配置继续生效并优先于密码文件，使用该方式时通过环境文件修改密码。
 
+「模型设置 → 系统更新」可检查 GitHub main 的最新提交。标准 Linux systemd 部署从 `/opt/picoding` 运行一次 `sudo npm run update -- setup` 后，可在页面确认更新并查看进度；更新先构建、完整备份，再重启，失败恢复原程序与任务镜像，保留配置和项目。请先保存编辑并停止正在执行的任务。安装条件和恢复说明见 [设置页一键更新](DEPLOYMENT.md#设置页一键更新)。
+
 ## 使用
 
 1. 在欢迎页点击「打开已有项目或空白工作区」，创建空白工作区，或导入公开 Git 仓库。使用 HTTP(S) 克隆地址，可选分支；留空使用默认分支。准备项目、手动编辑和运行命令无需模型凭证，但需要 Docker 和任务镜像就绪。

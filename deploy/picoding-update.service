@@ -1,0 +1,15 @@
+[Unit]
+Description=Build, back up and update PiCoding
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/picoding
+EnvironmentFile=/etc/picoding.env
+ExecStart=/usr/local/lib/picoding/update apply
+ExecStopPost=/usr/local/lib/picoding/update recover
+TimeoutStartSec=45min
+UMask=0077

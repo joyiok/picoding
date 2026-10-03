@@ -31,9 +31,11 @@ export class Workbench {
   private settingsChange?: Promise<PublicSettings>;
   private closing = false;
   private restoring = false;
+  private updating = false;
   constructor(readonly store: TaskStore, readonly settings: SettingsStore, private readonly makeSandbox: (id: string) => Sandbox & { start(signal?: AbortSignal): Promise<void> } = id => new DockerSandbox(id), readonly resources = new PiResources(settings.directory)) {}
 
   private available(id?: string) {
+    if (this.updating) throw new HttpError(503, '工作台正在更新，请等待完成后继续操作');
     if (this.closing) throw new HttpError(503, '工作台正在关闭，请重启后继续');
     if (this.restoring) throw new HttpError(503, '工作台正在恢复任务环境，请稍后重试');
     if (this.resourceChange) throw new HttpError(409, 'pi 包正在更新，请完成后继续任务');
@@ -41,6 +43,13 @@ export class Workbench {
     if (id && this.removing.has(id)) throw new HttpError(409, '任务正在删除，请等待操作结束');
     if (id && this.stopping.has(id)) throw new HttpError(409, '任务环境正在停止，请等待操作结束');
   }
+
+  beginUpdate() {
+    this.available();
+    if (this.store.list().some(task => ['creating', 'running', 'pausing'].includes(task.status)) || this.operations.size || this.stopping.size || this.removing.size) throw new HttpError(409, '请先停止正在执行的任务，并等待任务操作完成，再更新工作台');
+    this.updating = true;
+  }
+  endUpdate() { this.updating = false; }
 
   private async track<T>(id: string, operation: Promise<T>): Promise<T> {
     const group = this.operations.get(id) || new Set<Promise<unknown>>();

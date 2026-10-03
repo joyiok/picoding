@@ -3,6 +3,7 @@ import { defaultModelCapabilities, type APIProtocol, type PublicProvider, type P
 import { api, message } from './api';
 import { Icon } from './Icon';
 import type { ModelConnection } from '../shared/connection';
+import { Updates } from './Updates';
 
 type Draft = { providerName: string; protocol: APIProtocol; model: string; baseUrl: string; apiKey: string; contextWindow: string; maxTokens: string; supportsImages: boolean };
 function draftFor(settings?: PublicSettings, provider?: PublicProvider, modelId?: string): Draft {
@@ -18,6 +19,7 @@ export function Settings({ initial, onClose, onSaved, blockedReason }: { initial
   const drafts = useRef(new Map<string, Draft>());
   const providerDrafts = useRef(new Map<string, Pick<Draft, 'providerName' | 'protocol' | 'baseUrl' | 'apiKey'>>());
   const [catalog, setCatalog] = useState(initial);
+  const [section, setSection] = useState<'models' | 'updates'>('models');
   const [providerId, setProviderId] = useState(initial?.activeProviderId || '');
   const [modelId, setModelId] = useState(initial?.activeModelId || '');
   const [draft, setDraft] = useState(() => draftFor(initial, initial?.providers?.find(provider => provider.id === initial.activeProviderId), initial?.activeModelId));
@@ -87,8 +89,9 @@ export function Settings({ initial, onClose, onSaved, blockedReason }: { initial
   }
   return <dialog className="settings-dialog" ref={dialog} onCancel={event => { if (saving) event.preventDefault(); else onClose(); }} onClick={event => { if (event.target === event.currentTarget && !saving) onClose(); }} aria-labelledby="settings-title">
     <form onSubmit={save} ref={form}>
-      <div className="dialog-heading"><div><h2 id="settings-title">模型和供应商</h2><p>保存常用连接，随时从顶部切换模型。</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="关闭模型设置" disabled={saving}><Icon name="close" /></button></div>
-      <div className="settings-body">
+      <div className="dialog-heading"><div><h2 id="settings-title">{section === 'models' ? '模型和供应商' : '系统更新'}</h2><p>{section === 'models' ? '保存常用连接，随时从顶部切换模型。' : '查看版本与进度，更新你的工作台。'}</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="关闭模型设置" disabled={saving}><Icon name="close" /></button></div>
+      <nav className="settings-tabs" aria-label="设置分类"><button type="button" aria-pressed={section === 'models'} disabled={busy} onClick={() => setSection('models')}>模型和供应商</button><button type="button" aria-pressed={section === 'updates'} disabled={busy} onClick={() => setSection('updates')}>系统更新</button></nav>
+      <div className="settings-body" hidden={section !== 'models'}>
       {providers.length > 0 && <div className="saved-connections">
         <div><div className="connection-label"><label htmlFor="saved-provider">供应商</label>{provider && <button type="button" className="text-button" disabled={busy || Boolean(blockedReason)} onClick={() => void remove('provider')}>删除供应商</button>}</div><select id="saved-provider" value={providerId} onChange={event => choose(event.target.value)} disabled={busy}>{providers.map(provider => <option key={provider.id} value={provider.id}>{provider.name}</option>)}<option value="">添加供应商…</option></select></div>
         <div><div className="connection-label"><label htmlFor="saved-model">已保存的模型</label>{provider && modelId && <button type="button" className="text-button" disabled={busy || Boolean(blockedReason)} onClick={() => void remove('model')}>删除模型</button>}</div><select id="saved-model" value={modelId} onChange={event => choose(providerId, event.target.value)} disabled={busy || !provider}>{provider?.models.map(model => <option key={model.id} value={model.id}>{model.model}</option>)}<option value="">添加模型…</option></select></div>
@@ -118,7 +121,8 @@ export function Settings({ initial, onClose, onSaved, blockedReason }: { initial
       </div>
       {error && <p className="inline-error" role="alert">{error}</p>}
       </div>
-      <div className="dialog-footer model-settings-footer">
+      {section === 'updates' && <Updates blockedReason={blockedReason} />}
+      <div className="dialog-footer model-settings-footer" hidden={section !== 'models'}>
         <p className={'connection-status' + (connectionError ? ' connection-failed' : connection ? ' connection-succeeded' : '')} role={connectionError ? 'alert' : 'status'}>{testing ? '正在向模型发送短请求… 最多等待 15 秒。' : connectionError || (connection ? `连接成功 · ${(connection.latencyMs / 1000).toFixed(1)} 秒。尚未保存，点击保存设置后生效。` : '测试连接会发送一次短请求。保存设置后，此模型将用于工作台后续消息。')}</p>
         <div className="settings-buttons"><button type="button" className="button secondary" onClick={testing ? cancelTest : onClose} disabled={saving}>{testing ? '取消测试' : '取消'}</button><button type="button" className="button secondary" onClick={() => void testConnection()} disabled={busy || !valid}>{testing ? '正在测试…' : '测试连接'}</button><button type="submit" className="button primary" disabled={busy || !valid || Boolean(blockedReason)}>{saving ? '正在保存…' : '保存设置'}</button></div>
       </div>

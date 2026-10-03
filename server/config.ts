@@ -18,6 +18,7 @@ export const config = {
   password: process.env.PICODING_ACCESS_PASSWORD || undefined,
   port: positiveInteger(process.env.PICODING_PORT, 4310, 'PICODING_PORT', 65_535),
   dataDir: resolve(process.env.PICODING_DATA_DIR || '.picoding'),
+  updateDir: process.env.PICODING_UPDATE_DIR ? resolve(process.env.PICODING_UPDATE_DIR) : undefined,
   image: process.env.PICODING_SANDBOX_IMAGE || 'picoding-sandbox:local',
   maxTasks: positiveInteger(process.env.PICODING_MAX_TASKS, 3, 'PICODING_MAX_TASKS'),
   memory: process.env.PICODING_SANDBOX_MEMORY || '2g',
