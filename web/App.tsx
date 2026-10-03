@@ -76,7 +76,7 @@ export function App() {
   useEffect(() => {
     if (!activeId) return;
     const events = new EventSource(`/api${taskPath(activeId, 'events')}`);
-    events.onopen = () => setConnected(true);
+    events.onopen = () => { setConnected(true); setRevision(value => value + 1); };
     events.onerror = () => setConnected(false);
     events.onmessage = event => {
       const { event: update } = JSON.parse(event.data) as EventEnvelope;
