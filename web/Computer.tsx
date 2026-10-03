@@ -9,12 +9,14 @@ interface Props { task?: Task; revision: number; act: (action: string) => Promis
 
 export function Computer({ task, revision, act, report, onDirtyChange }: Props) {
   const [tab, setTab] = useState<Tab>('browser');
+  const [terminalOpened, setTerminalOpened] = useState(false);
   const [browser, setBrowser] = useState<BrowserState>();
   const [address, setAddress] = useState('');
   const [busy, setBusy] = useState(false);
   const lastUrl = useRef('');
   const live = task && ['ready', 'running', 'paused', 'pausing'].includes(task.status);
   const takeover = task?.status === 'paused';
+  function selectTab(next: Tab) { if (next === 'terminal') setTerminalOpened(true); setTab(next); }
   useEffect(() => { setBrowser(undefined); setAddress(''); lastUrl.current = ''; if (task && !task.messages.length) setTab('code'); }, [task?.id]);
   useEffect(() => {
     if (!task || !live) return;
@@ -37,8 +39,8 @@ export function Computer({ task, revision, act, report, onDirtyChange }: Props) 
   }
   return <section className="computer" aria-label="任务电脑">
     <div className="computer-tabs" role="tablist" aria-label="电脑视图">
-      {([['browser', '浏览器', 'browser'], ['code', '代码', 'code'], ['terminal', '终端', 'terminal']] as const).map(([id, label, icon]) => <button key={id} role="tab" id={`tab-${id}`} aria-selected={tab === id} aria-controls={`panel-${id}`} tabIndex={tab === id ? 0 : -1} className={tab === id ? 'selected' : ''} onClick={() => setTab(id)} onKeyDown={event => {
-        if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); const tabs: Tab[] = ['browser', 'code', 'terminal']; const next = tabs[(tabs.indexOf(id) + (event.key === 'ArrowRight' ? 1 : 2)) % 3]; setTab(next); document.getElementById(`tab-${next}`)?.focus(); }
+      {([['browser', '浏览器', 'browser'], ['code', '代码', 'code'], ['terminal', '终端', 'terminal']] as const).map(([id, label, icon]) => <button key={id} role="tab" id={`tab-${id}`} aria-selected={tab === id} aria-controls={`panel-${id}`} tabIndex={tab === id ? 0 : -1} className={tab === id ? 'selected' : ''} onClick={() => selectTab(id)} onKeyDown={event => {
+        if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); const tabs: Tab[] = ['browser', 'code', 'terminal']; const next = tabs[(tabs.indexOf(id) + (event.key === 'ArrowRight' ? 1 : 2)) % 3]; selectTab(next); document.getElementById(`tab-${next}`)?.focus(); }
       }}><Icon name={icon} size={16} />{label}</button>)}
       <span className="computer-title"><span className={`status-dot ${live ? 'online' : ''}`} />任务电脑</span>
     </div>
@@ -52,7 +54,7 @@ export function Computer({ task, revision, act, report, onDirtyChange }: Props) 
       </div>
     </div>
     <div className="computer-content" id="panel-code" role="tabpanel" aria-labelledby="tab-code" hidden={tab !== 'code'}><Files key={task?.id || 'empty'} task={task} live={Boolean(live)} revision={revision} report={report} onDirtyChange={onDirtyChange} /></div>
-    <div className="computer-content" id="panel-terminal" role="tabpanel" aria-labelledby="tab-terminal" hidden={tab !== 'terminal'}><Suspense fallback={<div className="editor-loading">正在准备终端…</div>}><InteractiveTerminal key={task?.id || 'empty'} task={task} live={Boolean(live)} active={tab === 'terminal'} act={act} empty={<ComputerEmpty tab="terminal" task={task} />} history={<Terminal task={task} live={Boolean(live)} report={report} />} /></Suspense></div>
+    <div className="computer-content" id="panel-terminal" role="tabpanel" aria-labelledby="tab-terminal" hidden={tab !== 'terminal'}>{terminalOpened && <Suspense fallback={<div className="editor-loading">正在准备终端…</div>}><InteractiveTerminal key={task?.id || 'empty'} task={task} live={Boolean(live)} active={tab === 'terminal'} act={act} empty={<ComputerEmpty tab="terminal" task={task} />} history={<Terminal task={task} live={Boolean(live)} report={report} />} /></Suspense>}</div>
     <div className="computer-footer"><span><Icon name="folder" size={13} /> /workspace</span><span>独立环境<span className="footer-separator" />Linux</span></div>
   </section>;
 }
