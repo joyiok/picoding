@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import { EventEmitter } from 'node:events';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -40,6 +40,31 @@ async function setup() {
   const workbench = new Workbench(store, settings);
   return { directory, store, settings, workbench, server: createApp(workbench), async close() { await workbench.shutdown(); await rm(directory, { recursive: true, force: true }); } };
 }
+
+test('task renaming persists and publishes metadata while preserving running conversations', async t => {
+  const state = await setup(); t.after(() => state.close());
+  const now = new Date().toISOString(), id = randomUUID();
+  const task: Task = { id, title: 'Original title', status: 'running', createdAt: now, updatedAt: now, messages: [{ id: randomUUID(), role: 'user', text: 'Keep conversation', createdAt: now }], tools: [], terminal: [] };
+  await state.store.save(task);
+  let published = false; const unsubscribe = state.workbench.events.listen(id, event => { if (event.type === 'task' && event.task.title === 'Updated project') published = true; }); t.after(unsubscribe);
+  const saved = await request(state.server, '/tasks/' + id, 'PATCH', { title: '  Updated project  ' });
+  assert.equal(saved.status, 200); assert.equal(saved.body.title, 'Updated project'); assert.equal(published, true);
+  assert.equal(state.store.get(id).status, 'running'); assert.equal(state.store.get(id).messages[0].text, 'Keep conversation');
+  assert.equal(JSON.parse(await readFile(join(state.store.directory, id + '.json'), 'utf8')).title, 'Updated project');
+  for (const title of ['', '   ', null, 'x'.repeat(121)]) assert.equal((await request(state.server, '/tasks/' + id, 'PATCH', { title })).status, 400);
+  assert.equal(state.store.get(id).title, 'Updated project');
+  assert.equal((await request(state.server, '/tasks/' + id, 'PATCH', { title: 'Foreign' }, { origin: 'https://evil.invalid' })).status, 403);
+  assert.equal((await request(state.server, '/tasks/' + randomUUID(), 'PATCH', { title: 'Missing' })).status, 404);
+});
+
+test('task renaming respects the workbench shutdown guard', async t => {
+  const state = await setup(); t.after(() => state.close());
+  const now = new Date().toISOString(), id = randomUUID();
+  await state.store.save({ id, title: 'Keep original', status: 'stopped', createdAt: now, updatedAt: now, messages: [], tools: [], terminal: [] });
+  await state.workbench.shutdown();
+  assert.equal((await request(state.server, '/tasks/' + id, 'PATCH', { title: 'Changed' })).status, 503);
+  assert.equal(state.store.get(id).title, 'Keep original');
+});
 
 test('HTTP settings routes hide credentials and reject malformed settings', async t => {
   const state = await setup(); t.after(() => state.close());

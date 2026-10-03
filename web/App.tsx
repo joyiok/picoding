@@ -8,6 +8,7 @@ import { Settings } from './Settings';
 import { Project } from './Project';
 import { Resources } from './Resources';
 import { browserDraftStorage, WorkspaceDrafts } from './drafts';
+import { TaskName } from './TaskName';
 
 const statuses: Record<string, string> = { creating: '正在准备', ready: '环境就绪', running: '正在执行', pausing: '正在暂停', paused: '你已接管', error: '启动失败', stopped: '环境已停止' };
 
@@ -24,6 +25,8 @@ export function App({ onLogout }: { onLogout?: () => Promise<void> } = {}) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
+  const [nameOpen, setNameOpen] = useState(false);
+  const [taskQuery, setTaskQuery] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 1000px)').matches);
   const [editorDirty, setEditorDirty] = useState(false);
@@ -38,9 +41,10 @@ export function App({ onLogout }: { onLogout?: () => Promise<void> } = {}) {
   const composer = useRef<HTMLTextAreaElement>(null);
   const sidebar = useRef<HTMLElement>(null);
   const task = tasks.find(task => task.id === activeId);
+  const visibleTasks = tasks.filter(task => task.title.toLocaleLowerCase().includes(taskQuery.trim().toLocaleLowerCase()));
   const refresh = useCallback(async () => {
     const results = await Promise.allSettled([api<Task[]>('/tasks'), api<Health>('/health'), api<PublicSettings>('/settings')]);
-    if (results[0].status === 'fulfilled') { setTasks(results[0].value); workspace.restoreAvailableTasks(results[0].value.map(task => task.id)); setConnected(true); } else { setConnected(false); setError('无法连接工作台后端。请确认 npm run dev 正在运行，然后重试。'); }
+    if (results[0].status === 'fulfilled') { setTasks(results[0].value); workspace.restoreAvailableTasks(results[0].value.map(task => task.id)); setConnected(true); } else { setConnected(false); setError('暂时无法连接工作台，请检查网络或联系部署管理员，然后重试。'); }
     if (results[1].status === 'fulfilled') setHealth(results[1].value);
     if (results[2].status === 'fulfilled') setSettings(results[2].value);
     setLoading(false);
@@ -147,6 +151,11 @@ export function App({ onLogout }: { onLogout?: () => Promise<void> } = {}) {
     catch (error) { setError(message(error)); }
     finally { setBusy(false); }
   }
+  async function renameTask(title: string) {
+    if (!task) return;
+    const saved = await api<Pick<Task, 'id' | 'title' | 'updatedAt'>>(`/tasks/${task.id}`, { title }, 'PATCH');
+    setTasks(tasks => tasks.map(item => item.id === saved.id && item.updatedAt <= saved.updatedAt ? { ...item, title: saved.title, updatedAt: saved.updatedAt } : item));
+  }
   const canCompose = !activeId || task?.status === 'ready';
   const needsSetup = !health?.docker.imageReady || !settings?.configured;
   return <div className="app-shell">
@@ -155,12 +164,13 @@ export function App({ onLogout }: { onLogout?: () => Promise<void> } = {}) {
       <a className="brand" href="#" onClick={event => { event.preventDefault(); newTask(); }}><PiMark /><span>PiCoding</span></a>
       <button className="drawer-close icon-button mobile-only" aria-label="关闭任务列表" onClick={() => setSidebarOpen(false)}><Icon name="close" size={17} /></button>
       <button className="new-task" onClick={() => newTask()}><Icon name="plus" size={17} />新任务<span className="new-task-key">开始</span></button>
-      <div className="task-list-heading">最近任务<span>{tasks.length > 0 ? tasks.length : ''}</span></div>
-      <nav className="task-list">{loading ? <div className="task-skeleton"><i /><i /><i /></div> : tasks.length ? tasks.map(item => <button key={item.id} className={`task-nav-item ${item.id === activeId ? 'active' : ''}`} aria-current={item.id === activeId ? 'page' : undefined} onClick={() => { if (item.id === activeId) { setSidebarOpen(false); return; } if (!allowNavigation()) return; setEditorDirty(false); setActiveId(item.id); setSidebarOpen(false); setError(''); }}><Icon name="chat" size={15} /><span>{item.title}</span><span className={`task-indicator ${item.status}`} title={statuses[item.status]} /></button>) : <div className="task-list-empty"><Icon name="clock" size={17} /><p>你的任务会保存在这里。</p><span>从第一件想做的事开始。</span></div>}</nav>
+      <div className="task-search"><Icon name="search" size={14} /><input type="search" aria-label="搜索任务" placeholder="搜索任务" value={taskQuery} maxLength={120} onChange={event => setTaskQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Escape' && taskQuery) { event.preventDefault(); event.stopPropagation(); setTaskQuery(''); } }} />{taskQuery && <button className="icon-button" aria-label="清空任务搜索" onClick={() => setTaskQuery('')}><Icon name="close" size={13} /></button>}</div>
+      <div className="task-list-heading">{taskQuery.trim() ? '搜索结果' : '最近任务'}<span>{tasks.length > 0 ? visibleTasks.length : ''}</span></div>
+      <nav className="task-list">{loading ? <div className="task-skeleton"><i /><i /><i /></div> : visibleTasks.length ? visibleTasks.map(item => <button key={item.id} className={`task-nav-item ${item.id === activeId ? 'active' : ''}`} aria-current={item.id === activeId ? 'page' : undefined} onClick={() => { if (item.id === activeId) { setSidebarOpen(false); return; } if (!allowNavigation()) return; setEditorDirty(false); setActiveId(item.id); setSidebarOpen(false); setError(''); }}><Icon name="chat" size={15} /><span>{item.title}</span><span className={`task-indicator ${item.status}`} title={statuses[item.status]} /></button>) : <div className="task-list-empty"><Icon name="clock" size={17} /><p>{taskQuery.trim() ? '没有找到任务。' : '你的任务会保存在这里。'}</p><span>{taskQuery.trim() ? '试试其他名称，或清空搜索。' : '从第一件想做的事开始。'}</span></div>}</nav>
       <div className="sidebar-bottom"><button className="settings-nav" onClick={() => { setSidebarOpen(false); setResourcesOpen(true); }}><Icon name="folder" size={17} />Skills 和插件<Icon name="chevron" size={14} /></button><button className="settings-nav" onClick={() => { setSidebarOpen(false); setSettingsOpen(true); }}><Icon name="settings" size={17} />模型设置<Icon name="chevron" size={14} /></button><div className="local-profile"><span className="profile-avatar">我</span><div><strong>{onLogout ? '私有工作台' : '本地工作台'}</strong><small><span className={`status-dot ${connected ? 'online' : ''}`} />{connected ? onLogout ? '访问已保护' : '仅在你的电脑上运行' : '正在重新连接…'}</small></div>{onLogout && <button className="icon-button" aria-label="退出登录" title="退出登录" onClick={() => { if (!editorDirty || confirm('代码还有未保存的改动，是否退出登录？重新登录后可继续编辑。')) void onLogout(); }}><Icon name="logout" size={16} /></button>}</div></div>
     </aside>
     <main className="main-workspace" inert={mobile && sidebarOpen}>
-      <header className="workspace-header"><div className="header-title"><button className="icon-button mobile-only" aria-label="打开任务列表" aria-expanded={sidebarOpen} aria-controls="task-navigation" onClick={() => setSidebarOpen(true)}><Icon name="menu" /></button><span>{task?.title || '新的开始'}</span>{task && <span className={`task-status ${task.status}`}><span className="status-dot" />{statuses[task.status]}</span>}</div><div className="header-actions"><button className="model-button" onClick={() => setSettingsOpen(true)}><span className={`status-dot ${settings?.configured ? 'online' : ''}`} /><span>{settings?.configured ? settings.model || (settings.protocol === 'anthropic' ? 'Anthropic 格式' : 'OpenAI 格式') : '连接模型'}</span><Icon name="down" size={13} /></button>{task && <><button className="icon-button" aria-label="下载项目" title="下载项目" disabled={!['ready', 'paused', 'running'].includes(task.status)} onClick={() => { window.location.href = `/api${taskPath(task.id, 'archive')}`; }}><Icon name="download" /></button><button className="icon-button" aria-label="删除任务" title="删除任务" disabled={busy || ['creating', 'running', 'pausing'].includes(task.status)} onClick={() => void remove()}><Icon name="trash" size={17} /></button></>}</div></header>
+      <header className="workspace-header"><div className="header-title"><button className="icon-button mobile-only" aria-label="打开任务列表" aria-expanded={sidebarOpen} aria-controls="task-navigation" onClick={() => setSidebarOpen(true)}><Icon name="menu" /></button><span>{task?.title || '新的开始'}</span>{task && <button className="icon-button rename-task" aria-label="重命名任务" title="重命名任务" onClick={() => setNameOpen(true)}><Icon name="edit" size={14} /></button>}{task && <span className={`task-status ${task.status}`}><span className="status-dot" />{statuses[task.status]}</span>}</div><div className="header-actions"><button className="model-button" onClick={() => setSettingsOpen(true)}><span className={`status-dot ${settings?.configured ? 'online' : ''}`} /><span>{settings?.configured ? settings.model || (settings.protocol === 'anthropic' ? 'Anthropic 格式' : 'OpenAI 格式') : '连接模型'}</span><Icon name="down" size={13} /></button>{task && <><button className="icon-button" aria-label="下载项目" title="下载项目" disabled={!['ready', 'paused', 'running'].includes(task.status)} onClick={() => { window.location.href = `/api${taskPath(task.id, 'archive')}`; }}><Icon name="download" /></button><button className="icon-button" aria-label="删除任务" title="删除任务" disabled={busy || ['creating', 'running', 'pausing'].includes(task.status)} onClick={() => void remove()}><Icon name="trash" size={17} /></button></>}</div></header>
       {error && <div className="error-banner" role="alert"><Icon name="alert" size={17} /><span>{error}</span>{!connected && <button onClick={() => { setError(''); void refresh(); }}>重试</button>}<button className="icon-button" aria-label="关闭提示" onClick={() => setError('')}><Icon name="close" size={15} /></button></div>}
       <div className="mobile-switch" role="group" aria-label="工作区视图"><button className={mobilePanel === 'chat' ? 'active' : ''} onClick={() => setMobilePanel('chat')}><Icon name="chat" size={15} />对话</button><button className={mobilePanel === 'computer' ? 'active' : ''} onClick={() => setMobilePanel('computer')}><Icon name="browser" size={15} />任务电脑</button></div>
       <div className={`workbench-grid mobile-${mobilePanel}`}>
@@ -178,6 +188,7 @@ export function App({ onLogout }: { onLogout?: () => Promise<void> } = {}) {
       </div>
       <footer className="workspace-footer"><button className="environment-check" disabled={checkingEnvironment} onClick={() => void checkEnvironment()} title="重新检查 Docker 和任务环境"><span className={`status-dot ${health?.docker.imageReady ? 'online' : ''}`} />{checkingEnvironment ? '正在检查环境…' : health?.docker.imageReady ? '任务环境已就绪' : health?.docker.available ? '环境镜像待构建 · 重新检查' : '等待 Docker · 重新检查'}</button>{task && !['creating', 'pausing', 'stopped'].includes(task.status) && <button onClick={() => void act('stop')}><Icon name="stop" size={12} />停止环境</button>}<span>Powered by pi</span></footer>
     </main>
+    {nameOpen && task && <TaskName key={task.id} title={task.title} save={renameTask} close={() => setNameOpen(false)} />}
     {settingsOpen && <Settings initial={settings} onClose={() => setSettingsOpen(false)} onSaved={value => { setSettings(value); void refresh(); }} />}
     {projectOpen && <Project onClose={() => setProjectOpen(false)} onCreated={created => { setTasks(tasks => [created, ...tasks]); setActiveId(created.id); setError(''); setMobilePanel('computer'); }} />}
     {resourcesOpen && <Resources onClose={() => setResourcesOpen(false)} onUse={command => { setDraft(command); setMobilePanel('chat'); requestAnimationFrame(() => composer.current?.focus()); }} />}

@@ -53,6 +53,7 @@ try {
   for (const [, asset] of html.text.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)) assert.equal((await api(asset)).status, 200);
   report('compiled production login shell and static assets');
   for (const route of ['/api/tasks', '/api/settings', '/api/health', `/api/tasks/${id}/events`, `/api/tasks/${id}/archive`]) assert.equal((await api(route)).status, 401);
+  assert.equal((await api(`/api/tasks/${id}`, 'PATCH', { title: 'Anonymous rename' })).status, 401);
   assert.equal((await api('/api/auth/login', 'POST', { password }, undefined, 'https://evil.invalid')).status, 403);
   assert.equal((await api('/api/auth/login', 'POST', { password: 'incorrect-password' })).status, 401);
   const login = await api('/api/auth/login', 'POST', { password }); assert.equal(login.status, 200);
@@ -60,6 +61,8 @@ try {
   const cookie = setCookie.split(';')[0];
   const tasks = await api('/api/tasks', 'GET', undefined, cookie); assert.equal(tasks.status, 200); assert.match(tasks.text, /Temporary private access fixture/);
   report('authenticated APIs and rejected anonymous or foreign-origin requests');
+  assert.equal((await api(`/api/tasks/${id}`, 'PATCH', { title: 'Foreign rename' }, cookie, 'https://evil.invalid')).status, 403);
+  const renamed = await api(`/api/tasks/${id}`, 'PATCH', { title: '  已整理的任务  ' }, cookie); assert.equal(renamed.status, 200); assert.equal(JSON.parse(renamed.text).title, '已整理的任务');
   const events = await stream(`/api/tasks/${id}/events`, 'GET', undefined, cookie); assert.equal(events.statusCode, 200); events.resume();
   const ended = new Promise<void>(resolve => events.once('end', resolve));
   await api('/api/auth/logout', 'POST', {}, cookie); await ended;
@@ -67,6 +70,9 @@ try {
   report('logout invalidates the session and disconnects production SSE');
   const again = await api('/api/auth/login', 'POST', { password }); const oldCookie = again.headers['set-cookie']![0].split(';')[0];
   await stop(); await launch(); assert.equal((await api('/api/tasks', 'GET', undefined, oldCookie)).status, 401);
+  const restarted = await api('/api/auth/login', 'POST', { password }); const freshCookie = restarted.headers['set-cookie']![0].split(';')[0];
+  const persisted = await api(`/api/tasks/${id}`, 'GET', undefined, freshCookie); assert.equal(persisted.status, 200); assert.equal(JSON.parse(persisted.text).title, '已整理的任务');
+  report('authenticated task renaming persists through production restart');
   assert.equal(output.includes(password), false);
   report('graceful restart invalidates sessions without exposing credentials');
 } finally { await stop(); await rm(directory, { recursive: true, force: true }); }
