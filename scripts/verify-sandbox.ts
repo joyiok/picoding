@@ -3,7 +3,7 @@ import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createServer } from 'node:http';
 import { createServer as tcpServer, type AddressInfo } from 'node:net';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, stat, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
@@ -14,6 +14,7 @@ import { textReply } from '../test/provider.js';
 // All settings/session data are private temporary data. No external model is called.
 const run = promisify(execFile);
 const directory = await mkdtemp(join(tmpdir(), 'picoding-production-'));
+const maintenance = await mkdtemp(join(tmpdir(), 'picoding-production-maintenance-'));
 const key = 'fictional-integration-key';
 const model = 'integration-custom-model';
 const html = '<!doctype html><meta charset="utf-8"><title>Production fixture</title><h1>真实沙盒验收</h1><button id="increment">加一</button><p id="counter"></p><script>let n=Number(localStorage.getItem("count")||0);function paint(){document.querySelector("#counter").textContent="次数："+n}paint();document.querySelector("#increment").onclick=()=>{n++;localStorage.setItem("count",String(n));paint()}</script>';
@@ -85,6 +86,7 @@ try {
   const assetPaths = [...pageHtml.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map(match => match[1]); assert.ok(assetPaths.length >= 2);
   for (const path of assetPaths) { const response = await fetch(base + path); assert.equal(response.status, 200); assert.ok((await response.text()).length > 100); }
   report('production HTML, JavaScript and CSS');
+  await api('/settings', { protocol: 'openai', baseUrl: 'http://127.0.0.1:' + providerPort + '/v1', model, apiKey: key, contextWindow: 128000, maxTokens: 16384, supportsImages: false });
   task = await api<Task>('/tasks', { title: 'Temporary production integration' }); await ready();
   const eventResponse = await fetch(base + '/api/tasks/' + task.id + '/events', { signal: eventsAbort.signal });
   assert.match(eventResponse.headers.get('content-type') || '', /text\/event-stream/);
@@ -134,6 +136,22 @@ try {
   await launch(); assert.equal((await api<Task>('/tasks/' + task.id)).status, 'stopped');
   await assert.rejects(run('docker', ['inspect', 'picoding-' + task.id]));
   await api('/tasks/' + task.id + '/start', {}); await ready(); assert.equal((await api<FileContent>('/tasks/' + task.id + '/file?path=index.html')).content, html); report('crash recovery removes interrupted containers and keeps project volume');
+  const fixture = await api<{ output: string }>('/tasks/' + task.id + '/command', { command: 'python3 -c "from pathlib import Path;Path(\'fixture.bin\').write_bytes(bytes(range(256)))" && ln -s index.html fixture-link && git rev-parse --is-inside-work-tree' }); assert.match(fixture.output, /true/);
+  await stop();
+  const backup = join(maintenance, 'backup'), restoredData = join(maintenance, 'restored');
+  const created = await run(process.execPath, ['dist/scripts/backup.js', 'create', backup], { env: environment }); assert.equal(created.stdout.includes(key), false);
+  await assert.rejects(run(process.execPath, ['dist/scripts/backup.js', 'restore', backup], { env: { ...environment, PICODING_DATA_DIR: restoredData } }), /同名项目卷/);
+  await run('docker', ['volume', 'rm', 'picoding-work-' + task.id]);
+  const restoredBackup = await run(process.execPath, ['dist/scripts/backup.js', 'restore', backup], { env: { ...environment, PICODING_DATA_DIR: restoredData } }); assert.equal(restoredBackup.stdout.includes(key), false);
+  assert.equal(JSON.parse(await readFile(join(restoredData, 'settings.json'), 'utf8')).apiKey, key); assert.equal((await stat(join(restoredData, 'settings.json'))).mode & 0o777, 0o600);
+  environment.PICODING_DATA_DIR = restoredData; await launch();
+  assert.equal((await api<Task>('/tasks/' + task.id)).status, 'stopped');
+  await api('/tasks/' + task.id + '/start', {}); await ready(); assert.equal((await api<FileContent>('/tasks/' + task.id + '/file?path=index.html')).content, html);
+  const bytes = await api<{ output: string }>('/tasks/' + task.id + '/command', { command: 'python3 -c "from pathlib import Path;print(Path(\'fixture.bin\').read_bytes().hex());print(Path(\'fixture-link\').readlink())" && git rev-parse --is-inside-work-tree' }); assert.match(bytes.output, new RegExp(Buffer.from(Array.from({ length: 256 }, (_, i) => i)).toString('hex'))); assert.match(bytes.output, /index\.html/); assert.match(bytes.output, /true/);
+  const afterBackup = await prompt('Continue after restoring the complete backup.'); assert.match(afterBackup.messages.at(-1)!.text, /已恢复/); assert.match(JSON.stringify(requests.at(-1)), /Build and verify the deterministic fixture project/);
+  await api('/tasks/' + task.id + '/takeover', {}); await api('/tasks/' + task.id + '/command', { command });
+  const backupBrowser = await api<BrowserState & { snapshot: string }>('/tasks/' + task.id + '/browser', { action: 'navigate', url: 'http://localhost:3000' }); assert.match(backupBrowser.snapshot, /次数：1/);
+  await api('/tasks/' + task.id + '/release', {}); report('compiled backup CLI restores actual Docker bytes, links, Git, settings, pi history and Chromium profile');
   await api('/tasks/' + task.id, undefined, 'DELETE'); task = undefined;
   await stop(); console.log(JSON.stringify({ result: 'Production integration passed using local simulated model only', modelRequests: requests.length }));
 } finally {
@@ -145,5 +163,5 @@ try {
     await run('docker', ['rm', '-f', 'picoding-proxy-' + task.id]).catch(() => {});
     await run('docker', ['volume', 'rm', 'picoding-work-' + task.id]).catch(() => {});
   }
-  provider.closeAllConnections(); provider.close(); await rm(directory, { recursive: true, force: true });
+  provider.closeAllConnections(); provider.close(); await rm(directory, { recursive: true, force: true }); await rm(maintenance, { recursive: true, force: true });
 }
