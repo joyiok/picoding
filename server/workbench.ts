@@ -6,7 +6,7 @@ import { createPiSession } from './agent.js';
 import { config } from './config.js';
 import { DockerSandbox, sandboxApi, type Sandbox } from './docker.js';
 import { EventHub } from './events.js';
-import { errorMessage, HttpError } from './http.js';
+import { errorMessage, HttpError, requireString } from './http.js';
 import type { SettingsStore } from './settings.js';
 import type { TaskStore } from './store.js';
 import { modelError } from './model-error.js';
@@ -84,6 +84,14 @@ export class Workbench {
     await this.store.save(task);
     void this.start(task.id).catch(error => console.error('任务启动失败', errorMessage(error)));
     return task;
+  }
+
+  async rename(id: string, title: string) {
+    this.available(id);
+    const task = this.store.get(id);
+    task.title = requireString(title, '任务名称', 120).trim(); task.updatedAt = new Date().toISOString();
+    await this.store.save(task); this.events.publish(id, { type: 'task', task });
+    return { id: task.id, title: task.title, updatedAt: task.updatedAt };
   }
 
   async start(id: string) {

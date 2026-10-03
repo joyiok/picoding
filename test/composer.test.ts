@@ -48,7 +48,7 @@ async function setup(t: TestContext, protectedAccess = false) {
   t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, options?: RequestInit) => {
     const path = String(input);
     calls.push(path);
-    if (options?.method === 'POST' || options?.method === 'DELETE') {
+    if (options?.method === 'POST' || options?.method === 'DELETE' || options?.method === 'PATCH') {
       return new Promise<Response>(resolve => { pending.push({ path, body: options.body ? JSON.parse(String(options.body)) : undefined, resolve }); });
     }
     if (path === '/api/auth') return json(access);
@@ -103,15 +103,16 @@ async function setup(t: TestContext, protectedAccess = false) {
   function beforeUnload() {
     const event = new window.Event('beforeunload', { cancelable: true }); window.dispatchEvent(event); return event.defaultPrevented;
   }
-  async function typePassword(value: string) {
-    const input = window.document.querySelector<FixtureInput>('#access-password'); assert.ok(input);
+  async function typeInput(selector: string, value: string) {
+    const input = window.document.querySelector<FixtureInput>(selector); assert.ok(input);
     await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(input, value); input.dispatchEvent(new window.Event('input', { bubbles: true })); });
   }
+  const typePassword = (value: string) => typeInput('#access-password', value);
   async function expireAccess() {
     access = { required: true, authenticated: false };
     await act(async () => { window.dispatchEvent(new window.Event('picoding:unauthorized')); });
   }
-  return { composer, click, select, type, reply, selected, remount, tasks, pending, storage: window.sessionStorage, beforeUnload, typePassword, calls, document: window.document, expireAccess };
+  return { composer, click, select, type, reply, selected, remount, tasks, pending, storage: window.sessionStorage, beforeUnload, typePassword, typeInput, calls, document: window.document, expireAccess };
 }
 
 test('task switching preserves each message draft and the new-task draft', async t => {
@@ -240,4 +241,42 @@ test('an expired API session shows login without discarding the current draft', 
   assert.ok(ui.document.querySelector('#access-password'));
   await ui.typePassword('fixture-password'); await ui.click('.access-submit'); await ui.reply({ required: true, authenticated: true, expiresAt: Date.now() + 3600_000 });
   assert.equal(ui.composer().value, 'Draft before session expiration');
+});
+
+test('task search filters names without losing the active task or its composer draft', async t => {
+  const ui = await setup(t); await ui.select('Task A'); await ui.type('Keep A while searching');
+  await ui.typeInput('input[aria-label="搜索任务"]', 'task b');
+  assert.equal(ui.document.querySelectorAll('.task-nav-item').length, 1);
+  assert.match(ui.document.querySelector('.task-nav-item')!.textContent, /Task B/);
+  assert.equal(ui.composer().value, 'Keep A while searching'); assert.match(ui.document.querySelector('.header-title')!.textContent, /Task A/);
+  await ui.typeInput('input[aria-label="搜索任务"]', 'no matching fixture'); assert.match(ui.document.querySelector('.task-list-empty')!.textContent, /没有找到/);
+  await ui.click('button[aria-label="清空任务搜索"]'); assert.equal(ui.document.querySelectorAll('.task-nav-item').length, 2); assert.equal(ui.selected(), 'Task A');
+});
+
+test('task rename updates the title and navigation without touching message input', async t => {
+  const ui = await setup(t); await ui.select('Task A'); await ui.type('Keep message during rename');
+  await ui.click('button[aria-label="重命名任务"]'); await ui.typeInput('#task-new-name', '采购项目');
+  await ui.click('.task-name-dialog button[type="submit"], .task-name-dialog .dialog-footer .primary');
+  assert.equal(ui.pending[0].path, '/api/tasks/' + taskA); assert.deepEqual(ui.pending[0].body, { title: '采购项目' });
+  await ui.reply({ id: taskA, title: '采购项目', updatedAt: '2026-10-03T01:00:00Z' });
+  assert.equal(ui.document.querySelector('.task-name-dialog'), null); assert.equal(ui.selected(), '采购项目'); assert.equal(ui.composer().value, 'Keep message during rename');
+});
+
+test('failed task rename keeps the entered name for retry and cancellation keeps the old title', async t => {
+  const ui = await setup(t); await ui.select('Task A'); await ui.click('button[aria-label="重命名任务"]');
+  await ui.typeInput('#task-new-name', 'Retain renamed draft'); await ui.click('.task-name-dialog .primary');
+  await ui.reply({ error: 'Fixture save failure' }, 503);
+  assert.equal(ui.document.querySelector<FixtureInput>('#task-new-name')!.value, 'Retain renamed draft'); assert.equal(ui.selected(), 'Task A');
+  assert.match(ui.document.querySelector('.task-name-dialog [role="alert"]')!.textContent, /save failure/);
+  await ui.click('button[aria-label="关闭任务名称"]'); assert.equal(ui.document.querySelector('.task-name-dialog'), null); assert.equal(ui.selected(), 'Task A');
+});
+
+test('an open settings modal is suspended during session expiry and restored with its unsaved fields', async t => {
+  const ui = await setup(t, true);
+  await ui.typePassword('fixture-password'); await ui.click('.access-submit'); await ui.reply({ required: true, authenticated: true, expiresAt: Date.now() + 3600_000 });
+  await ui.click('.model-button'); await ui.typeInput('#model', 'unsaved-model-fixture');
+  const dialog = ui.document.querySelector('dialog')!; assert.equal(dialog.hasAttribute('open'), true);
+  await ui.expireAccess(); assert.equal(dialog.hasAttribute('open'), false); assert.ok(ui.document.querySelector('#access-password'));
+  await ui.typePassword('fixture-password'); await ui.click('.access-submit'); await ui.reply({ required: true, authenticated: true, expiresAt: Date.now() + 3600_000 });
+  assert.equal(dialog.hasAttribute('open'), true); assert.equal(ui.document.querySelector<FixtureInput>('#model')!.value, 'unsaved-model-fixture');
 });

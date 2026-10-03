@@ -81,6 +81,7 @@ export function createApp(workbench: Workbench, access = new AccessControl(confi
         const [, id, action = ''] = match;
         const task = workbench.store.get(id);
         if (!action && method === 'GET') return json(response, task);
+        if (!action && method === 'PATCH') { const body = await readJson<{ title: string }>(request); return json(response, await workbench.rename(id, body.title)); }
         if (!action && method === 'DELETE') { await workbench.remove(id); return json(response, { ok: true }); }
         if (action === 'events' && method === 'GET') { workbench.events.subscribe(id, response, { type: 'task', task }); return; }
         if (action === 'start' && method === 'POST') { workbench.validateStart(id); void workbench.start(id).catch(error => console.error(errorMessage(error))); return json(response, { ok: true }, 202); }

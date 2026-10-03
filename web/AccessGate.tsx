@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AccessStatus } from '../server/access';
 import { api, message } from './api';
 import { App } from './App';
@@ -14,6 +14,8 @@ export function AccessGate() {
   const requestVersion = useRef(0);
   const changing = useRef(false);
   const passwordField = useRef<HTMLInputElement>(null);
+  const workspace = useRef<HTMLDivElement>(null);
+  const suspendedDialogs = useRef<HTMLDialogElement[]>([]);
   const update = useCallback((next: AccessStatus) => { setStatus(next); if (next.authenticated) setOpened(true); }, []);
   const refresh = useCallback(async () => {
     if (changing.current) return;
@@ -51,8 +53,17 @@ export function AccessGate() {
   }
 
   const locked = !status?.authenticated;
+  useLayoutEffect(() => {
+    if (locked) {
+      suspendedDialogs.current = [...(workspace.current?.querySelectorAll<HTMLDialogElement>('dialog[open]') || [])];
+      for (const dialog of suspendedDialogs.current) dialog.close();
+    } else {
+      for (const dialog of suspendedDialogs.current) if (dialog.isConnected && !dialog.open) dialog.showModal();
+      suspendedDialogs.current = [];
+    }
+  }, [locked]);
   return <>
-    {opened && <div className="access-workspace" hidden={locked} inert={locked}><App onLogout={status?.required ? logout : undefined} /></div>}
+    {opened && <div ref={workspace} className="access-workspace" hidden={locked} inert={locked}><App onLogout={status?.required ? logout : undefined} /></div>}
     {locked && <main className="access-page"><section className="access-card" aria-labelledby="access-title">
       <PiMark size={42} /><span className="access-brand">PiCoding</span>
       <h1 id="access-title">{status ? '登录你的工作台' : error ? '暂时无法连接' : '正在连接工作台…'}</h1>
