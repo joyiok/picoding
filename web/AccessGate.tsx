@@ -26,9 +26,9 @@ export function AccessGate() {
   useEffect(() => {
     void refresh();
     const check = () => { void refresh(); };
-    window.addEventListener('focus', check); window.addEventListener('picoding:unauthorized', check);
+    window.addEventListener('focus', check); window.addEventListener('picoding:unauthorized', check); window.addEventListener('picoding:access-changed', check);
     const timer = setInterval(check, 60_000);
-    return () => { requestVersion.current++; clearInterval(timer); window.removeEventListener('focus', check); window.removeEventListener('picoding:unauthorized', check); };
+    return () => { requestVersion.current++; clearInterval(timer); window.removeEventListener('focus', check); window.removeEventListener('picoding:unauthorized', check); window.removeEventListener('picoding:access-changed', check); };
   }, [refresh]);
   useEffect(() => {
     if (!status?.expiresAt || !status.authenticated) return;

@@ -37,7 +37,18 @@ export async function loadAccessCredential(directory: string): Promise<AccessCre
   return parseAccessCredential(value);
 }
 
-// Password rotation is an offline administrative operation, sharing the service's data lock.
+// The running service already owns the data lease. Offline commands still acquire it below.
+export async function replaceAccessCredential(directory: string, credential: AccessCredential, expected: AccessCredential) {
+  const current = await loadAccessCredential(directory);
+  if (!current || current.salt !== expected.salt || current.hash !== expected.hash) throw new Error('访问密码文件已变化，请联系管理员检查或重启工作台');
+  const file = join(directory, accessCredentialFile), temporary = file + '.' + randomBytes(8).toString('hex') + '.tmp';
+  try {
+    await writeFile(temporary, JSON.stringify(parseAccessCredential(credential)) + '\n', { mode: 0o600, flag: 'wx' });
+    await rename(temporary, file);
+  } finally { await rm(temporary, { force: true }); }
+}
+
+// CLI password rotation is offline and shares the service's data lock.
 export async function saveAccessPassword(directory: string, password: string, replace = false) {
   validateAccessPassword(password);
   const lease = await acquireDataLease(directory);

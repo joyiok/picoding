@@ -27,7 +27,7 @@ function task(id: string, title: string): Task {
 function json(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } }); }
 
 // A DOM fixture with explicit API replies; no Docker, browser or real model is used.
-async function setup(t: TestContext, protectedAccess = false) {
+async function setup(t: TestContext, protectedAccess = false, passwordManagementEnabled = true) {
   const window = new Window({ url: 'http://127.0.0.1:4310', width: 1280, settings: { disableIframePageLoading: true, disableCSSFileLoading: true, disableJavaScriptFileLoading: true } });
   const saved = new Map<string, PropertyDescriptor | undefined>();
   const streams: Events[] = [];
@@ -67,6 +67,7 @@ async function setup(t: TestContext, protectedAccess = false) {
       return new Promise<Response>(resolve => { pending.push({ path, body: options.body ? JSON.parse(String(options.body)) : undefined, resolve }); });
     }
     if (path === '/api/auth') return json(access);
+    if (path === '/api/auth/password') return json({ enabled: passwordManagementEnabled, ...(!passwordManagementEnabled ? { disabledReason: '访问密码由服务器管理员管理，请联系管理员修改。' } : {}) });
     if (path === '/api/tasks') return json(tasks);
     if (path === '/api/health') return json({ docker: { available: true, imageReady: true }, model: { configured: true }, version: 'test' });
     if (path === '/api/settings') return json(modelSettings);
@@ -355,7 +356,7 @@ test('system updates retain model drafts, require explicit confirmation, pin the
   const ui = await setup(t); await ui.type('Keep composer draft');
   await ui.click('.model-button'); await ui.click('.model-menu .text-button');
   await ui.typeInput('#model', 'unsaved-model');
-  await ui.click('.settings-tabs button:last-child');
+  await ui.click('.settings-tabs [data-section="updates"]');
   assert.equal(ui.document.querySelector('.update-actions .primary')!.hasAttribute('disabled'), true);
   await ui.click('.update-actions .secondary');
   const status: UpdateStatus = { current: { version: '0.1.0', commit: 'a'.repeat(40), dirty: false }, latest: { commit: 'b'.repeat(40), title: '模拟更新：新增功能', date: '2026-10-04T00:00:00Z', url: 'https://github.com/joyiok/picoding/commit/' + 'b'.repeat(40) }, available: true, enabled: true, checkedAt: new Date().toISOString() };
@@ -379,9 +380,51 @@ test('system updates retain model drafts, require explicit confirmation, pin the
 
 test('a failed update check clears an old install target and leaves a retryable error', async t => {
   const ui = await setup(t); await ui.click('.model-button'); await ui.click('.model-menu .text-button');
-  await ui.click('.settings-tabs button:last-child'); await ui.click('.update-actions .secondary');
+  await ui.click('.settings-tabs [data-section="updates"]'); await ui.click('.update-actions .secondary');
   await ui.reply({ error: 'GitHub 暂时不可用' }, 502);
   assert.equal(ui.document.querySelector('.update-actions .primary')!.hasAttribute('disabled'), true);
   assert.match(ui.document.querySelector('.system-updates [role="alert"]')!.textContent, /GitHub 暂时不可用/);
   assert.equal(ui.document.querySelector('.update-actions .secondary')!.hasAttribute('disabled'), false);
+});
+
+test('password settings validate confirmation, retain failed inputs and refresh access without losing model or composer drafts', async t => {
+  const ui = await setup(t, true);
+  await ui.typePassword('fixture-access-password'); await ui.click('.access-submit');
+  await ui.reply({ required: true, authenticated: true });
+  await ui.type('Retain this composer draft');
+  await ui.click('.model-button'); await ui.click('.model-menu .text-button');
+  await ui.typeInput('#model', 'unsaved-model-before-password-change');
+  await ui.click('.settings-tabs [data-section="access"]');
+  await ui.typeInput('#current-password', 'original-password-fixture');
+  await ui.typeInput('#new-password', 'replacement-password-fixture');
+  await ui.typeInput('#confirm-password', 'mismatched-password-fixture');
+  await ui.click('.password-settings .primary');
+  assert.equal(ui.pending.length, 0);
+  assert.match(ui.document.querySelector('.password-settings [role="alert"]')!.textContent, /不一致/);
+  await ui.typeInput('#confirm-password', 'replacement-password-fixture');
+  await ui.click('.password-settings .primary');
+  assert.equal(ui.document.querySelector('.dialog-heading button')!.hasAttribute('disabled'), true);
+  assert.ok([...ui.document.querySelectorAll('.settings-tabs button')].every(button => button.hasAttribute('disabled')));
+  assert.deepEqual(ui.pending[0].body, { currentPassword: 'original-password-fixture', newPassword: 'replacement-password-fixture', confirmation: 'replacement-password-fixture' });
+  await ui.reply({ error: '当前密码不正确，请重新输入' }, 400);
+  assert.equal(ui.document.querySelector<FixtureInput>('#new-password')!.value, 'replacement-password-fixture');
+  assert.match(ui.document.querySelector('.password-settings [role="alert"]')!.textContent, /当前密码不正确/);
+  await ui.click('.password-settings .primary');
+  const saved = await ui.reply({ required: true, authenticated: true, expiresAt: Date.now() + 28800000 });
+  assert.equal(saved.path, '/api/auth/password');
+  for (const id of ['current-password', 'new-password', 'confirm-password']) assert.equal(ui.document.querySelector<FixtureInput>('#' + id)!.value, '');
+  assert.match(ui.document.querySelector('.password-success')!.textContent, /其他登录已退出/);
+  assert.equal(ui.document.querySelector('.access-page'), null);
+  await ui.click('.settings-tabs button:first-child');
+  assert.equal(ui.document.querySelector<FixtureInput>('#model')!.value, 'unsaved-model-before-password-change');
+  assert.equal(ui.composer().value, 'Retain this composer draft');
+});
+
+test('environment-managed access shows a disabled password control with a useful explanation', async t => {
+  const ui = await setup(t, false, false);
+  await ui.click('.model-button'); await ui.click('.model-menu .text-button');
+  await ui.click('.settings-tabs [data-section="access"]');
+  assert.match(ui.document.querySelector('.password-settings [role="status"]')!.textContent, /服务器管理员/);
+  assert.equal(ui.document.querySelector('.password-settings .primary')!.hasAttribute('disabled'), true);
+  assert.equal(ui.document.querySelector('#current-password'), null);
 });

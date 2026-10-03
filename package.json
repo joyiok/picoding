@@ -21,6 +21,7 @@
     "pi:packages": "node --import tsx scripts/pi-packages.ts",
     "test:access": "npm run build && node --import tsx scripts/verify-access.ts",
     "test:browser": "npm run build && node --import tsx scripts/verify-browser.ts",
+    "test:password-browser": "npm run build && node --import tsx scripts/verify-password-browser.ts",
     "backup": "node dist/scripts/backup.js",
     "access": "node dist/scripts/access.js",
     "update": "node dist/scripts/update.js",

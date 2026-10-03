@@ -44,7 +44,11 @@ export function createApp(workbench: Workbench, access = new AccessControl(confi
       if (url.pathname === '/api/auth/logout' && method === 'POST') {
         response.setHeader('Set-Cookie', access.logout(request)); return json(response, access.status(request));
       }
-      if (url.pathname.startsWith('/api/')) { access.require(request); access.protectConnection(request, response, () => response.end()); }
+      if (url.pathname.startsWith('/api/')) {
+        access.require(request);
+        // Rotation revokes the original session; its response must deliver the replacement cookie first.
+        if (!(url.pathname === '/api/auth/password' && method === 'POST')) access.protectConnection(request, response, () => response.end());
+      }
       if (url.pathname === '/api/updates' && method === 'GET') {
         const status = await updates.status();
         if (!installing && !updateActive(status.job)) workbench.endUpdate();
@@ -68,6 +72,12 @@ export function createApp(workbench: Workbench, access = new AccessControl(confi
         const active = updateActive((await updates.status()).job);
         if (installing || active) throw new HttpError(503, '工作台正在更新，请等待完成后继续操作');
         workbench.endUpdate();
+      }
+      if (url.pathname === '/api/auth/password' && method === 'GET') return json(response, access.passwordManagement());
+      if (url.pathname === '/api/auth/password' && method === 'POST') {
+        const body = await readJson<{ currentPassword: unknown; newPassword: unknown; confirmation: unknown }>(request, 4096);
+        const result = await workbench.changeAccess(() => access.changePassword(request, body.currentPassword, body.newPassword, body.confirmation));
+        response.setHeader('Set-Cookie', result.cookie); return json(response, result.status);
       }
       if (url.pathname === '/api/health' && method === 'GET') {
         const settings = workbench.settings.public();

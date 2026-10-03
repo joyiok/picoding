@@ -29,6 +29,7 @@ export class Workbench {
   private removing = new Map<string, Promise<void>>();
   private resourceChange?: Promise<unknown>;
   private settingsChange?: Promise<PublicSettings>;
+  private accessChange?: Promise<unknown>;
   private closing = false;
   private restoring = false;
   private updating = false;
@@ -46,10 +47,18 @@ export class Workbench {
 
   beginUpdate() {
     this.available();
+    if (this.accessChange) throw new HttpError(409, '访问密码正在修改，请完成后再更新工作台');
     if (this.store.list().some(task => ['creating', 'running', 'pausing'].includes(task.status)) || this.operations.size || this.stopping.size || this.removing.size) throw new HttpError(409, '请先停止正在执行的任务，并等待任务操作完成，再更新工作台');
     this.updating = true;
   }
   endUpdate() { this.updating = false; }
+
+  async changeAccess<T>(change: () => Promise<T>): Promise<T> {
+    this.available();
+    if (this.accessChange) throw new HttpError(409, '访问密码正在修改，请稍后重试');
+    const operation = Promise.resolve().then(change); this.accessChange = operation;
+    try { return await operation; } finally { this.accessChange = undefined; }
+  }
 
   private async track<T>(id: string, operation: Promise<T>): Promise<T> {
     const group = this.operations.get(id) || new Set<Promise<unknown>>();
@@ -376,6 +385,7 @@ export class Workbench {
     for (const controller of this.sendAbort.values()) controller.abort();
     await this.resourceChange?.catch(() => {});
     await this.settingsChange?.catch(() => {});
+    await this.accessChange?.catch(() => {});
     for (const controller of this.startingAbort.values()) controller.abort();
     for (const controller of this.manualCommands.values()) controller.abort();
     await Promise.allSettled([...this.preparing.values()]);
