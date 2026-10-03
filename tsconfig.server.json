@@ -9,6 +9,6 @@
     "types": ["node"],
     "sourceMap": true
   },
-  "include": ["server", "shared", "sandbox", "scripts/doctor.ts"],
+  "include": ["server", "shared", "sandbox", "scripts/doctor.ts", "scripts/backup.ts"],
   "exclude": ["web", "test", "scripts/dev.ts"]
 }

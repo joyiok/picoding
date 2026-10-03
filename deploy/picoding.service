@@ -1,0 +1,31 @@
+[Unit]
+Description=PiCoding private workbench
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=picoding
+Group=picoding
+SupplementaryGroups=docker
+WorkingDirectory=/opt/picoding
+EnvironmentFile=/etc/picoding.env
+ExecStart=/usr/bin/node /opt/picoding/dist/server/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=90
+KillMode=mixed
+StateDirectory=picoding
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/picoding
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
